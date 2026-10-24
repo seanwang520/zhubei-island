@@ -1,0 +1,5 @@
+# Claude Artifact 專用的精簡頁面
+artifact.html
+# 開發測試檔
+dev/
+.DS_Store
