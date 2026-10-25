@@ -1,5 +1,5 @@
 // 竹北政策島 — 環境音效（Web Audio 即時合成，不載入音檔）
-// 海浪一道一道湧上岸；清晨、白天有五色鳥，白天、黃昏有台灣爺蟬，草蟬從早到晚都有。
+// 海浪一道一道湧上岸；清晨、白天有五色鳥，蟲鳴是草蟬，從早到晚都有。
 // export createAmbience() → { setOn(on), setTime(t) }
 
 export function createAmbience() {
@@ -160,15 +160,10 @@ export function createAmbience() {
     [src, lfo, wob].forEach((n) => { n.start(t); n.stop(end + 0.05); });
     return rise + hold + fade;
   }
-  // 台灣爺蟬：體型最大的蟬，叫聲低沉宏亮，一段拉長的大聲嗡鳴
-  const formosanCicada = () => cicada({
-    freq: 2100 + Math.random() * 300, q: 6, pulse: 95 + Math.random() * 15, vol: 0.2,
-    rise: 1.5 + Math.random(), hold: 4 + Math.random() * 5, fade: 1.2, wobble: 0.05,
-  });
   // 草蟬：小型蟬，躲在草叢裡發出細細高高、綿長不斷的「滋——」
   const grassCicada = () => cicada({
-    freq: 7200 + Math.random() * 900, q: 10, pulse: 210 + Math.random() * 40, vol: 0.06,
-    rise: 0.6, hold: 6 + Math.random() * 8, fade: 0.8, wobble: 0.015,
+    freq: 7200 + Math.random() * 900, q: 10, pulse: 210 + Math.random() * 40, vol: 0.09,
+    rise: 0.8, hold: 10 + Math.random() * 15, fade: 1.0, wobble: 0.015,
   });
 
   function panner(v) {
@@ -179,11 +174,10 @@ export function createAmbience() {
     return p;
   }
 
-  // 依時段排程：清晨、白天五色鳥；白天、黃昏爺蟬；草蟬白天到夜晚都有，夜晚較疏
+  // 依時段排程：清晨、白天五色鳥；蟲鳴只有草蟬，白天到夜晚都有，夜晚較疏
   const VOICES = [
     { play: barbet, when: ["dawn", "day"], rest: [3, 9] },
-    { play: formosanCicada, when: ["day", "dusk"], rest: [6, 16] },
-    { play: grassCicada, when: ["dawn", "day", "dusk", "night"], rest: [4, 12], nightRest: [10, 25] },
+    { play: grassCicada, when: ["dawn", "day", "dusk", "night"], rest: [2, 6], nightRest: [8, 20] },
   ];
   const voiceTimers = [];
   function schedule() {
