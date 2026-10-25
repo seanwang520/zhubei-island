@@ -1,6 +1,6 @@
 // 竹北政策島 — 2D 介面層
-// export createUI(root, data, { onSelectTheme, onReset, onTimeChange, onPauseToggle, onLinksToggle })
-//   → { openTheme(id), closeDetail() }
+// export createUI(root, data, { onSelectTheme, onReset, onTimeChange, onPauseToggle, onLinksToggle, onAutoTourToggle, … })
+//   → { openTheme(id), openTask(id), closeDetail(), setAutoTour(on, step, total) }
 
 const TOUR_KEY = 'zhubei-island:tour-seen:v1';
 const MOBILE_MQ = '(max-width: 767px)';
@@ -16,6 +16,10 @@ const ICONS = {
   carry: '<svg viewBox="0 0 24 24"><rect x="8" y="2.5" width="8" height="6" rx="1.2"/><circle cx="12" cy="11.5" r="1.8"/><path d="M12 13.5v4.5M9 21l3-3 3 3M8.5 15.5h7"/></svg>',
   pause: '<svg viewBox="0 0 24 24"><path d="M8.5 5.5v13M15.5 5.5v13"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></svg>',
+  autotour: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M10 8.5v7l5.5-3.5z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
+  sound: '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
+  mute: '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>',
   overview: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
   list: '<svg viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01"/></svg>',
   help: '<svg viewBox="0 0 24 24"><path d="M9.3 9a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.4-2.7 4.2M12 17.6h.01"/></svg>',
@@ -87,7 +91,7 @@ function isSafeUrl(url) {
 }
 
 export function createUI(root, data, callbacks = {}) {
-  const { onSelectTheme, onSelectTask, onReset, onTimeChange, onPauseToggle, onLinksToggle, onCarriersToggle, onNamesToggle, onDetailToggle } = callbacks || {};
+  const { onSelectTheme, onSelectTask, onReset, onTimeChange, onPauseToggle, onLinksToggle, onCarriersToggle, onNamesToggle, onDetailToggle, onAutoTourToggle, onSoundToggle } = callbacks || {};
   const meta = (data && data.meta) || {};
   const sources = Array.isArray(meta.sources) ? meta.sources : [];
   const themes = ((data && data.themes) || []).slice().sort((a, b) => (a.no || 0) - (b.no || 0));
@@ -173,8 +177,15 @@ export function createUI(root, data, callbacks = {}) {
     icon('tag'), h('span', { class: 'zb-lbl', text: '名牌' }));
   const carryBtn = h('button', { type: 'button', class: 'zb-tbtn', 'aria-label': '隱藏搬運小人', 'aria-pressed': 'true', onclick: () => setCarriers(!state.carriers) },
     icon('carry'), h('span', { class: 'zb-lbl', text: '搬運' }));
+  const autoIco = icon('autotour');
+  const autoLbl = h('span', { class: 'zb-lbl', text: '導覽' });
+  const autoBtn = h('button', { type: 'button', class: 'zb-tbtn', 'aria-label': '自動導覽 10 座島', 'aria-pressed': 'false', onclick: () => fire(onAutoTourToggle, autoBtn.getAttribute('aria-pressed') !== 'true') },
+    autoIco, autoLbl);
+  const soundIco = icon('mute');
+  const soundBtn = h('button', { type: 'button', class: 'zb-tbtn', 'aria-label': '開啟環境音效', 'aria-pressed': 'false', onclick: () => setSound(soundBtn.getAttribute('aria-pressed') !== 'true') },
+    soundIco, h('span', { class: 'zb-lbl', text: '音效' }));
   const funcBar = h('div', { class: 'zb-pill zb-panel', role: 'group', 'aria-label': '場景功能' },
-    tasks.length ? [namesBtn, carryBtn] : null, linksBtn, pauseBtn, overviewBtn);
+    autoBtn, tasks.length ? [namesBtn, carryBtn] : null, linksBtn, soundBtn, pauseBtn, overviewBtn);
 
   const detail = h('section', { class: 'zb-detail zb-panel', role: 'dialog', 'aria-modal': 'false', 'aria-label': '政策細項', 'aria-hidden': 'true', tabindex: '-1' });
   detail.inert = true;
@@ -277,6 +288,12 @@ export function createUI(root, data, callbacks = {}) {
     pauseIco.innerHTML = ICONS[p ? 'play' : 'pause'];
     pauseLbl.textContent = p ? '播放' : '暫停';
     fire(onPauseToggle, p);
+  }
+  function setSound(on) {
+    soundBtn.setAttribute('aria-pressed', String(on));
+    soundBtn.setAttribute('aria-label', on ? '關閉環境音效' : '開啟環境音效');
+    soundIco.innerHTML = ICONS[on ? 'sound' : 'mute'];
+    fire(onSoundToggle, on);
   }
   function setCarriers(on) {
     state.carriers = on;
@@ -434,7 +451,12 @@ export function createUI(root, data, callbacks = {}) {
       h('div', { class: 'zb-detail-titlerow' },
         h('span', { class: 'zb-detail-ico', 'aria-hidden': 'true', text: t.icon || '🏝️' }),
         h('h2', { class: 'zb-detail-title', text: t.title })),
-      t.landmark ? h('p', { class: 'zb-detail-landmark' }, h('span', { class: 'zb-mono', text: '島上地標' }), t.landmark) : null,
+      t.landmark ? h('div', { class: 'zb-landmark' },
+        h('p', { class: 'zb-landmark-head' }, h('span', { class: 'zb-mono', text: '島上地標' }), h('strong', { text: t.landmark })),
+        t.landmarkNote ? h('p', { class: 'zb-landmark-note', text: t.landmarkNote }) : null,
+        (t.landmarkSources || []).length
+          ? h('p', { class: 'zb-landmark-src' }, (t.landmarkSources || []).filter((s) => isSafeUrl(s.url)).map((s) => h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer' }, s.title, ' ↗')))
+          : h('p', { class: 'zb-landmark-src', text: '造型示意，非實景' })) : null,
       t.summary ? h('p', { class: 'zb-detail-summary', text: t.summary }) : null,
       t.quote ? h('blockquote', { class: 'zb-quote', text: `「${String(t.quote).replace(/^「|」$/g, '')}」` }) : null,
       h('div', { class: 'zb-tags' },
@@ -547,6 +569,13 @@ export function createUI(root, data, callbacks = {}) {
     reportDetail();
   }
 
+  // 自動導覽的按鈕狀態由 main.js 控制
+  function setAutoTour(on, step, total) {
+    autoBtn.setAttribute('aria-pressed', String(on));
+    autoBtn.setAttribute('aria-label', on ? '停止自動導覽' : '自動導覽 10 座島');
+    autoIco.innerHTML = ICONS[on ? 'stop' : 'autotour'];
+    autoLbl.textContent = on && step ? `導覽 ${step}/${total}` : '導覽';
+  }
   function closeDetail() {
     if (!state.openId && !state.openTask && !detail.classList.contains('is-visible')) return;
     state.openId = null;
@@ -621,5 +650,5 @@ export function createUI(root, data, callbacks = {}) {
     if (!seen) openTour(0);
   }, 0);
 
-  return { openTheme, openTask, closeDetail };
+  return { openTheme, openTask, closeDetail, setAutoTour };
 }

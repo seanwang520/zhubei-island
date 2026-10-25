@@ -28,6 +28,8 @@ const HOME_POLAR = 0.92;
 const HOME_DIST = 82;
 const FOCUS_DIST = 30;
 const TOP = 0.32; // 島面高度（島嶼本地座標）
+// 手機順暢模式：觸控裝置或小螢幕降低解析度、陰影與人數，並限 30fps
+const LITE = typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches || Math.min(screen.width, screen.height) < 768);
 
 /* ----------------------------- 光線預設 ----------------------------- */
 const PRESETS = {
@@ -137,7 +139,7 @@ function seeded(seed) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-export function createScene(container, themes = [], { onSelectTheme, onSelectTask, tasks = [] } = {}) {
+export function createScene(container, themes = [], { onSelectTheme, onSelectTask, tasks = [], homeDist = HOME_DIST } = {}) {
   /* ---------- 基本設定 ---------- */
   if (!document.getElementById(STYLE_ID)) {
     const st = document.createElement("style");
@@ -150,11 +152,11 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
   const width = () => container.clientWidth || window.innerWidth;
   const height = () => container.clientHeight || window.innerHeight;
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: !LITE, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, LITE ? 1.5 : 2));
   renderer.setSize(width(), height());
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = LITE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.domElement.style.display = "block";
   renderer.domElement.style.touchAction = "none";
   container.appendChild(renderer.domElement);
@@ -189,7 +191,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
       target.y + dist * Math.cos(pol),
       target.z + dist * Math.sin(pol) * Math.cos(az)
     );
-  camera.position.copy(sphericalPos(HOME_TARGET, HOME_AZIMUTH, HOME_POLAR, HOME_DIST));
+  camera.position.copy(sphericalPos(HOME_TARGET, HOME_AZIMUTH, HOME_POLAR, homeDist));
   controls.target.copy(HOME_TARGET);
   controls.update();
 
@@ -204,6 +206,12 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     }
     return matCache.get(key);
   }
+  // 夜晚會亮起來的材質：[材質, 白天發光強度, 夜晚發光強度]
+  const glowMats = [];
+  const glowing = (m, night) => {
+    if (!glowMats.some((g) => g[0] === m)) glowMats.push([m, m.emissiveIntensity, night]);
+    return m;
+  };
   const windowMat = track(new THREE.MeshStandardMaterial({ color: "#dfe7ea", roughness: 0.4, emissive: "#ffc867", emissiveIntensity: 0 }));
   const landMat = track(new THREE.MeshStandardMaterial({ color: "#f3e8cf", roughness: 0.9, flatShading: true }));
   const lampMat = track(new THREE.MeshStandardMaterial({ color: "#fff4d6", emissive: "#ffd27a", emissiveIntensity: 0.1 }));
@@ -239,7 +247,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
   scene.add(hemi);
   const sun = new THREE.DirectionalLight("#fff3df", 2.4);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.setScalar(LITE ? 1024 : 2048);
   const sc = sun.shadow.camera;
   sc.left = -42; sc.right = 42; sc.top = 32; sc.bottom = -32; sc.near = 1; sc.far = 160;
   sun.shadow.bias = -0.0006;
@@ -248,7 +256,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
   scene.add(sun, sun.target);
 
   /* ---------- 海面（低多邊形微波） ---------- */
-  const waterGeo = track(new THREE.PlaneGeometry(420, 420, 90, 90));
+  const waterGeo = track(new THREE.PlaneGeometry(420, 420, LITE ? 48 : 90, LITE ? 48 : 90));
   waterGeo.rotateX(-Math.PI / 2);
   const waterBase = Float32Array.from(waterGeo.attributes.position.array);
   const waterMat = track(new THREE.MeshStandardMaterial({ color: "#9fdad5", roughness: 0.35, metalness: 0.05, flatShading: true, transparent: true, opacity: 0.96 }));
@@ -567,6 +575,11 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
   function person(parent, x, z, color) {
     const pool = ISLAND_ROLES[roleCtx] || ["市民"];
     const n = personCount++;
+    if (LITE && n % 2) { // 手機上島民減半：回傳不加進場景的空殼
+      const ghost = new THREE.Group();
+      ghost.userData.step = () => {};
+      return ghost;
+    }
     const g = makeCharacter(ROLES[pool[n % pool.length]] || ROLES.市民, n, color);
     g.position.set(x, TOP, z);
     parent.add(g);
@@ -715,14 +728,14 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
       for (let i = 0; i <= 7; i++) box(g, 0.03, 0.78, 0.05, "#3e4a52", -1.45 + i * (2.9 / 7), TOP + 0.02, -0.72);
       box(g, 3.1, 0.06, 0.45, "#3e4a52", 0, TOP + 0.8, -0.55);
       // 屋頂的太陽、月亮、星星
-      const sunMat = mat("#f2b84b", { emissive: "#f2a33b", emissiveIntensity: 0.35 });
+      const sunMat = glowing(mat("#f2b84b", { emissive: "#f2a33b", emissiveIntensity: 0.35 }), 1.4);
       const sunBall = mesh(new THREE.IcosahedronGeometry(0.26, 1), sunMat, -1.0, TOP + 1.95, -1.4);
       g.add(sunBall);
-      const moon = mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 18, Math.PI * 1.25), mat("#f4e7b0", { emissive: "#f0d77a", emissiveIntensity: 0.3 }), 0.1, TOP + 1.95, -1.4);
+      const moon = mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 18, Math.PI * 1.25), glowing(mat("#f4e7b0", { emissive: "#f0d77a", emissiveIntensity: 0.3 }), 1.4), 0.1, TOP + 1.95, -1.4);
       moon.rotation.z = 1.2; g.add(moon);
       const starGeoE = new THREE.ExtrudeGeometry(starShape(0.16, 0.07), { depth: 0.05, bevelEnabled: false });
       const starsE = [[0.75, 1.85], [1.1, 2.15], [1.0, 1.7]].map(([x, y], i) => {
-        const s = mesh(i ? starGeoE.clone() : starGeoE, mat("#ffd86b", { emissive: "#ffc93b", emissiveIntensity: 0.5 }), x, TOP + y, -1.4);
+        const s = mesh(i ? starGeoE.clone() : starGeoE, glowing(mat("#ffd86b", { emissive: "#ffc93b", emissiveIntensity: 0.5 }), 1.8), x, TOP + y, -1.4);
         s.scale.setScalar(i === 1 ? 0.8 : 1); g.add(s); return s;
       });
       anims.push((t) => {
@@ -980,7 +993,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
         for (let f = 0; f < 4; f++) g.add(mesh(new THREE.SphereGeometry(0.07, 6, 5), mat(fruits[(f + i + row) % 4]), x - 0.3 + f * 0.2, TOP + 0.36, z));
       }
       // 紅燈籠
-      const lanternMat = mat("#d6453d", { emissive: "#e0402f", emissiveIntensity: 0.25 });
+      const lanternMat = glowing(mat("#d6453d", { emissive: "#e0402f", emissiveIntensity: 0.25 }), 2.0);
       const lanterns = [];
       for (let i = 0; i < 6; i++) {
         const lg = new THREE.Group(); lg.position.set(-1.75 + i * 0.7, TOP + 0.93, 1.45);
@@ -993,7 +1006,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
       const shops = [[-2.1, "#f1dcc4", "#d6453d"], [-1.15, "#e8eef0", "#3f6b9a"], [-0.2, "#f4e3c8", "#e1b54a"], [0.75, "#efe2d6", "#5a8f5a"]];
       shops.forEach(([x, col, sign], i) => {
         building(g, { w: 0.9, h: 1.2 + (i % 2) * 0.35, d: 0.8, color: col, x, z: -2.2, roof: "flat", roofColor: "#b9b2a2" });
-        box(g, 0.12, 0.7, 0.05, sign, x + 0.35, TOP + 0.5, -1.75);
+        box(g, 0.12, 0.7, 0.05, glowing(mat(sign, { emissive: sign, emissiveIntensity: 0 }), 0.9), x + 0.35, TOP + 0.5, -1.75);
         box(g, 0.92, 0.06, 0.3, sign, x, TOP + 0.45, -1.7);
       });
       // 停放的機車
@@ -1147,7 +1160,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     gate.rotation.y = -Math.atan2(nz - ez, nx - ex);
     box(gate, 0.07, 0.75, 0.07, color, -0.38, 0, 0); box(gate, 0.07, 0.75, 0.07, color, 0.38, 0, 0);
     box(gate, 0.9, 0.12, 0.1, color, 0, 0.72, 0);
-    box(gate, 0.5, 0.05, 0.11, "#ffffff", 0, 0.755, 0);
+    box(gate, 0.5, 0.05, 0.11, lampMat, 0, 0.755, 0);
     g.add(gate);
     return { mid, entry };
   }
@@ -1339,7 +1352,8 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
         p.scale.y = 0.65;
         c.add(p);
       }
-      c.position.set(lerp(-80, 90, rnd()), lerp(17, 24, rnd()), lerp(-40, 40, rnd()));
+      // 雲只放在島群北側（鏡頭的遠方），不擋住島
+      c.position.set(lerp(-80, 90, rnd()), lerp(17, 24, rnd()), lerp(-60, -20, rnd()));
       c.userData.speed = lerp(0.6, 1.4, rnd());
       scene.add(c);
       clouds.push(c);
@@ -1698,6 +1712,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     windowMat.color.setRGB(lerp(0.87, 1, s.glow), lerp(0.9, 0.85, s.glow), lerp(0.92, 0.55, s.glow));
     lampMat.emissiveIntensity = 0.1 + s.glow * 2.2;
     neonMat.emissiveIntensity = neonMat2.emissiveIntensity = 0.7 + s.glow * 1.4;
+    glowMats.forEach(([m, d, n]) => (m.emissiveIntensity = lerp(d, n, s.glow)));
     starMat.opacity = s.stars;
     stars.visible = s.stars > 0.01;
     renderer.setClearColor(s.fog);
@@ -1778,8 +1793,12 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
   let animTime = 0;
   let raf = 0;
   const tmpV = new THREE.Vector3();
+  let lastFrame = 0;
   function frame() {
     raf = requestAnimationFrame(frame);
+    const now = performance.now();
+    if (LITE && now - lastFrame < 31) return;
+    lastFrame = now;
     const dt = Math.min(clock.getDelta(), 0.05);
     const realT = clock.elapsedTime;
 
@@ -1917,7 +1936,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     refreshCarrierTags();
     islands.forEach((o) => o.el.classList.remove("is-active", "is-dim"));
     linksGroup.children.forEach((l) => { if (l.userData.isLink) l.material.opacity = 0.9; });
-    flyTo(sphericalPos(HOME_TARGET, HOME_AZIMUTH, HOME_POLAR, HOME_DIST), HOME_TARGET.clone());
+    flyTo(sphericalPos(HOME_TARGET, HOME_AZIMUTH, HOME_POLAR, homeDist), HOME_TARGET.clone());
   }
   function setTimeOfDay(t) {
     if (!PRESETS[t]) return;

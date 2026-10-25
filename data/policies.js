@@ -32,6 +32,8 @@ export default {
     {
       id: "care",
       landmark: "台大醫院新竹分院生醫醫院（竹北院區）",
+      landmarkNote: "竹北院區 1 期已在營運；2 期於 2026 年 4 月上樑，預計 2027 年完工，將增加健康管理中心、智慧醫療創新中心與病床。",
+      landmarkSources: [{ title: "工商時報：新竹台大分院生醫醫院竹北院區 2 期上樑", url: "https://wantrich.chinatimes.com/news/20260429901119-420501" }],
       no: 1,
       title: "全齡照顧",
       icon: "🏠",
@@ -51,6 +53,8 @@ export default {
     {
       id: "service",
       landmark: "竹北市公所",
+      landmarkNote: "竹北市的行政中心，負責 31 里的基層服務。島上的服務車代表「服務走進 31 里」。",
+      landmarkSources: [],
       no: 2,
       title: "城市生活支持服務",
       icon: "🤝",
@@ -69,6 +73,8 @@ export default {
     {
       id: "edu",
       landmark: "竹北市立圖書館福德分館",
+      landmarkNote: "舊館因地震造成室內裝修受損，市公所爭取客委會補助翻新。新館以星空為主題，用太陽、月亮、星星分區，一樓落地窗延伸到福德廣場。",
+      landmarkSources: [{ title: "聯合報：開箱福德分館美感閱讀新空間", url: "https://udn.com/news/story/7324/9634219" }, { title: "自由時報：福德分館翻新", url: "https://news.ltn.com.tw/news/life/breakingnews/5508678" }],
       no: 3,
       title: "安心教育",
       icon: "🎒",
@@ -87,6 +93,8 @@ export default {
     {
       id: "traffic",
       landmark: "高鐵新竹站、光明地下道",
+      landmarkNote: "高鐵新竹站位在竹北。光明地下道是國道與高鐵進入竹北的門面，報導指出未來將列為環境美化的重點。",
+      landmarkSources: [{ title: "自由時報：光明地下道美化", url: "https://news.ltn.com.tw/news/politics/breakingnews/5583781" }],
       no: 4,
       title: "人本交通",
       icon: "🚲",
@@ -106,6 +114,8 @@ export default {
     {
       id: "resilience",
       landmark: "頭前溪河濱",
+      landmarkNote: "新竹縣規劃頭前溪北岸 32 公頃高灘地河濱公園，先期 8.1 公頃包含球場、越野自行車練習場，並串聯既有自行車道。",
+      landmarkSources: [{ title: "方格子：頭前溪北岸高灘地建置遊憩設施", url: "https://vocus.cc/article/66797523fd897800017fadbc" }],
       no: 5,
       title: "城市韌性",
       icon: "🛡️",
@@ -124,6 +134,8 @@ export default {
     {
       id: "digital",
       landmark: "台元科技園區",
+      landmarkNote: "前身是台元紡織老廠，2001 年啟用的民間科技園區，以 IC 設計聚落為主。2026 年報導指出園區約 12 萬坪，有逾 300 家企業、約 2 萬名研發人員。",
+      landmarkSources: [{ title: "工商時報：台元科技園區", url: "https://www.ctee.com.tw/news/20260416701374-431206" }, { title: "遠見：台元科技園區", url: "https://www.gvm.com.tw/article/40707" }],
       no: 6,
       title: "竹北數位孿生／智慧市政",
       icon: "🛰️",
@@ -141,6 +153,8 @@ export default {
     {
       id: "space",
       landmark: "竹北水圳森林公園",
+      landmarkNote: "市公所啟動生態水池的池體整治與生態優化，池中的巴西龜開放民眾認養。",
+      landmarkSources: [{ title: "聯合報：水圳森林公園水池整治", url: "https://udn.com/news/story/7324/9466911" }],
       no: 7,
       title: "公有空間活化",
       icon: "🌳",
@@ -160,6 +174,8 @@ export default {
     {
       id: "market",
       landmark: "竹北傳統市場",
+      landmarkNote: "竹北傳統市場與周邊街屋商圈的意象：棚下攤位、紅燈籠與直立招牌。",
+      landmarkSources: [],
       no: 8,
       title: "市場與商圈共榮",
       icon: "🏮",
@@ -178,6 +194,8 @@ export default {
     {
       id: "culture",
       landmark: "新瓦屋客家文化保存區",
+      landmarkNote: "台灣第一個客家文化保存區，以清嘉慶年間建立的忠孝堂公廳為核心，占地約 1.6 公頃，園區內有水稻田生態教育園區與木棧舞台。",
+      landmarkSources: [{ title: "Smile Taiwan：漫步竹北", url: "https://smiletaiwan.cw.com.tw/article/2299" }],
       no: 9,
       title: "文化運動閱讀巡迴31里",
       icon: "📚",
@@ -196,6 +214,8 @@ export default {
     {
       id: "youth",
       landmark: "新月沙灣",
+      landmarkNote: "竹北西區最具代表性的海岸。竹北市投入約 2 千萬元升級，打造濱海新地標。",
+      landmarkSources: [{ title: "聯合報：竹北砸 2 千萬升級新月沙灣", url: "https://udn.com/news/story/7324/9660177" }],
       no: 10,
       title: "青年",
       icon: "🌱",
