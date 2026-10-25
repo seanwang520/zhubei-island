@@ -1,5 +1,5 @@
 // 竹北政策島 — 環境音效（Web Audio 即時合成，不載入音檔）
-// 海浪一道一道湧上岸；白天、清晨有鳥叫，黃昏、夜晚換成蟲鳴。
+// 海浪一道一道湧上岸；清晨、白天有五色鳥，白天、黃昏有台灣爺蟬，草蟬從早到晚都有。
 // export createAmbience() → { setOn(on), setTime(t) }
 
 export function createAmbience() {
@@ -7,7 +7,6 @@ export function createAmbience() {
   let master = null;
   let on = false;
   let time = "day";
-  let timer = null;
   let waveTimer = null;
   let white = null;
 
@@ -98,54 +97,108 @@ export function createAmbience() {
     return true;
   }
 
-  // 一聲鳥叫：兩三個快速上滑的音
-  function chirp() {
-    const t0 = ctx.currentTime;
-    const notes = 2 + Math.floor(Math.random() * 2);
-    const base = 2600 + Math.random() * 1200;
-    for (let i = 0; i < notes; i++) {
-      const t = t0 + i * 0.13;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(base, t);
-      o.frequency.exponentialRampToValueAtTime(base * 1.45, t + 0.08);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.05, t + 0.015);
-      g.gain.exponentialRampToValueAtTime(0.0008, t + 0.1);
-      o.connect(g).connect(master);
-      o.start(t);
-      o.stop(t + 0.12);
+  // 五色鳥：低沉、空心的「嘓、嘓、嘓」，像敲木魚，一串十幾聲、節奏單調
+  function barbet() {
+    const t0 = ctx.currentTime + 0.05;
+    const n = 10 + Math.floor(Math.random() * 14);
+    const f = 560 + Math.random() * 120;
+    const gap = 0.3 + Math.random() * 0.08;
+    const pan = panner((Math.random() - 0.5) * 1.2);
+    for (let i = 0; i < n; i++) {
+      // 偶爾連敲兩下（嘓嘓）
+      const t = t0 + i * gap + (i % 5 === 4 ? -gap * 0.45 : 0);
+      [1, 2.02].forEach((h, k) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.setValueAtTime(f * h * 1.06, t);
+        o.frequency.exponentialRampToValueAtTime(f * h, t + 0.05);
+        const v = (k ? 0.03 : 0.16) * (0.85 + Math.random() * 0.3);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(v, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        o.connect(g).connect(pan);
+        o.start(t);
+        o.stop(t + 0.18);
+      });
     }
+    return n * gap;
   }
 
-  // 一串蟲鳴：高頻短脈衝
-  function cricket() {
-    const t0 = ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = "triangle";
-    o.frequency.value = 4300 + Math.random() * 500;
-    g.gain.value = 0;
-    for (let i = 0; i < 6; i++) {
-      const t = t0 + i * 0.07;
-      g.gain.setValueAtTime(0.025, t);
-      g.gain.setValueAtTime(0, t + 0.035);
-    }
-    o.connect(g).connect(master);
-    o.start(t0);
-    o.stop(t0 + 0.5);
+  // 蟬：帶通噪音再用快速脈衝調變，做出「沙沙的嗡鳴」
+  function cicada({ freq, q, pulse, vol, rise, hold, fade, wobble }) {
+    const t = ctx.currentTime + 0.05;
+    const end = t + rise + hold + fade;
+    const src = ctx.createBufferSource();
+    src.buffer = white;
+    src.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = freq;
+    bp.Q.value = q;
+    // 脈衝調變：振幅在 0 和 1 之間以 pulse Hz 快速開合
+    const am = ctx.createGain();
+    am.gain.value = 0.5;
+    const lfo = ctx.createOscillator();
+    lfo.type = "square";
+    lfo.frequency.value = pulse;
+    const depth = ctx.createGain();
+    depth.gain.value = 0.5;
+    lfo.connect(depth).connect(am.gain);
+    // 音高與音量緩慢起伏
+    const wob = ctx.createOscillator();
+    wob.frequency.value = 0.3 + Math.random() * 0.4;
+    const wobDepth = ctx.createGain();
+    wobDepth.gain.value = freq * wobble;
+    wob.connect(wobDepth).connect(bp.frequency);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(vol, t + rise);
+    env.gain.setValueAtTime(vol, t + rise + hold);
+    env.gain.exponentialRampToValueAtTime(0.0001, end);
+    src.connect(bp).connect(am).connect(env).connect(panner((Math.random() - 0.5) * 1.4));
+    [src, lfo, wob].forEach((n) => { n.start(t); n.stop(end + 0.05); });
+    return rise + hold + fade;
+  }
+  // 台灣爺蟬：體型最大的蟬，叫聲低沉宏亮，一段拉長的大聲嗡鳴
+  const formosanCicada = () => cicada({
+    freq: 2100 + Math.random() * 300, q: 6, pulse: 95 + Math.random() * 15, vol: 0.2,
+    rise: 1.5 + Math.random(), hold: 4 + Math.random() * 5, fade: 1.2, wobble: 0.05,
+  });
+  // 草蟬：小型蟬，躲在草叢裡發出細細高高、綿長不斷的「滋——」
+  const grassCicada = () => cicada({
+    freq: 7200 + Math.random() * 900, q: 10, pulse: 210 + Math.random() * 40, vol: 0.06,
+    rise: 0.6, hold: 6 + Math.random() * 8, fade: 0.8, wobble: 0.015,
+  });
+
+  function panner(v) {
+    if (!ctx.createStereoPanner) return master;
+    const p = ctx.createStereoPanner();
+    p.pan.value = v;
+    p.connect(master);
+    return p;
   }
 
+  // 依時段排程：清晨、白天五色鳥；白天、黃昏爺蟬；草蟬白天到夜晚都有，夜晚較疏
+  const VOICES = [
+    { play: barbet, when: ["dawn", "day"], rest: [3, 9] },
+    { play: formosanCicada, when: ["day", "dusk"], rest: [6, 16] },
+    { play: grassCicada, when: ["dawn", "day", "dusk", "night"], rest: [4, 12], nightRest: [10, 25] },
+  ];
+  const voiceTimers = [];
   function schedule() {
-    clearTimeout(timer);
+    voiceTimers.forEach(clearTimeout);
     if (!on) return;
-    const night = time === "night" || time === "dusk";
-    timer = setTimeout(() => {
-      if (!on) return;
-      if (night) cricket(); else chirp();
-      schedule();
-    }, night ? 600 + Math.random() * 1400 : 2500 + Math.random() * 5000);
+    VOICES.forEach((v, i) => {
+      const loop = (first) => {
+        if (!on) return;
+        const active = v.when.includes(time);
+        const dur = active && !first ? v.play() : 0;
+        const [a, b] = time === "night" && v.nightRest ? v.nightRest : v.rest;
+        voiceTimers[i] = setTimeout(() => loop(false), (dur + a + Math.random() * (b - a)) * 1000 * (first ? 0.3 : 1));
+      };
+      loop(true);
+    });
   }
 
   function setOn(v) {
