@@ -1414,19 +1414,34 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
       });
       if (near) pairs.push([id, near]);
     });
-    const edgeAt = (isl, ang) => {
-      const [x, z] = isl.edge[angIdx(isl.edge, 0, 0, ang)];
-      return [x + isl.group.position.x, z + isl.group.position.z];
+    const worldEdge = (isl) => isl.edge.map(([x, z]) => [x + isl.group.position.x, z + isl.group.position.z]);
+    // 兩島岸線上距離最短的一對點；平行岸邊等距時取最靠近兩島中心連線的那對
+    const closestPair = (A, B) => {
+      const ea = worldEdge(A), eb = worldEdge(B);
+      const pa = A.group.position, pb = B.group.position;
+      const ux = pb.x - pa.x, uz = pb.z - pa.z, ul = Math.hypot(ux, uz);
+      const off = ([x, z]) => Math.abs((x - pa.x) * uz - (z - pa.z) * ux) / ul;
+      let best = null, bs = Infinity;
+      ea.forEach((p) => eb.forEach((q) => {
+        const sc = Math.hypot(q[0] - p[0], q[1] - p[1]) + 0.04 * (off(p) + off(q));
+        if (sc < bs) { bs = sc; best = [p, q]; }
+      }));
+      return best;
+    };
+    const nearestIdx = (pts, [x, z]) => {
+      let bi = 0, bd = Infinity;
+      pts.forEach(([px, pz], i) => { const d = Math.hypot(px - x, pz - z); if (d < bd) { bd = d; bi = i; } });
+      return bi;
     };
     pairs.forEach(([a, b]) => {
       const A = islands.get(a), B = islands.get(b);
       const pa = A.group.position, pb = B.group.position;
-      const ang = Math.atan2(pb.z - pa.z, pb.x - pa.x);
-      const ea = edgeAt(A, ang), eb = edgeAt(B, ang + Math.PI);
+      const [ea, eb] = closestPair(A, B);
       if (!adj.has(a)) adj.set(a, []);
       if (!adj.has(b)) adj.set(b, []);
-      adj.get(a).push({ to: b, head: angIdx(A.ring, pa.x, pa.z, ang), a: ea, b: eb, w: pa.distanceTo(pb) });
-      adj.get(b).push({ to: a, head: angIdx(B.ring, pb.x, pb.z, ang + Math.PI), a: eb, b: ea, w: pa.distanceTo(pb) });
+      // 橋頭接在外環道路上離橋端最近的點
+      adj.get(a).push({ to: b, head: nearestIdx(A.ring, ea), a: ea, b: eb, w: pa.distanceTo(pb) });
+      adj.get(b).push({ to: a, head: nearestIdx(B.ring, eb), a: eb, b: ea, w: pa.distanceTo(pb) });
       // 橋面兩端各伸進島緣下方一點，欄杆只蓋在水面那段
       const dx = eb[0] - ea[0], dz = eb[1] - ea[1];
       const len = Math.hypot(dx, dz);
