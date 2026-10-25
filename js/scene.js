@@ -11,15 +11,15 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 /* 北側 z≈-16 是鳳山溪、南側 z≈16 是頭前溪，東邊接丘陵。               */
 /* ------------------------------------------------------------------ */
 const LAYOUT = {
-  resilience: { x: -8, z: -7, r: 4.1 },  // 沿海防災
+  youth: { x: -8, z: -7, r: 4.1 },       // 新月沙灣（西側海岸）
   market: { x: 1, z: -9, r: 4.0 },
-  youth: { x: 10, z: -9, r: 3.9 },
+  resilience: { x: 10, z: -9, r: 3.9 },  // 頭前溪河濱
   digital: { x: 19, z: -6, r: 4.0 },     // 東側科技區
   space: { x: -6, z: 2, r: 4.0 },        // 濱海公園
   care: { x: 3, z: 0, r: 4.2 },          // 舊城住宅
   service: { x: 12, z: 0.5, r: 3.9 },
   traffic: { x: 21, z: 3.5, r: 4.4 },    // 高鐵站一帶
-  culture: { x: -1, z: 10, r: 4.0 },
+  culture: { x: -1, z: 10, r: 4.0 },     // 新瓦屋
   edu: { x: 8.5, z: 9.5, r: 4.1 },
 };
 const HOME_TARGET = new THREE.Vector3(2, 0, 1.5);
@@ -596,320 +596,506 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     return p;
   }
 
-  /* ---------- 主題造型 ---------- */
+  /* ---------- 地標造型小工具 ---------- */
+  function wheels(parent, pts, r = 0.09) {
+    pts.forEach(([x, z]) => {
+      const w = mesh(new THREE.CylinderGeometry(r, r, 0.06, 10), mat("#2e3238"), x, r, z);
+      w.rotation.x = Math.PI / 2; parent.add(w);
+    });
+  }
+  // 貼地平面（水面、廣場、道路）
+  function decal(parent, geo, color, x, z, lift = 0.012, opts = {}) {
+    const m = mesh(geo, mat(color, { side: THREE.DoubleSide, ...opts }), x, TOP + lift, z, false);
+    m.rotation.x = -Math.PI / 2;
+    parent.add(m);
+    return m;
+  }
+  // 人字屋頂：屋脊沿 z 方向，rot 轉向
+  function gableRoof(parent, span, len, rh, color, x, y, z, rot = 0) {
+    const s = new THREE.Shape();
+    s.moveTo(-span / 2, 0); s.lineTo(span / 2, 0); s.lineTo(0, rh); s.closePath();
+    const geo = new THREE.ExtrudeGeometry(s, { depth: len, bevelEnabled: false });
+    geo.translate(0, 0, -len / 2);
+    const m = mesh(geo, mat(color), x, y, z);
+    m.rotation.y = rot;
+    parent.add(m);
+    return m;
+  }
+  function starShape(ro, ri) {
+    const s = new THREE.Shape();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? ri : ro, a = Math.PI / 2 + (i * Math.PI) / 5;
+      if (i) s.lineTo(Math.cos(a) * r, Math.sin(a) * r); else s.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    s.closePath();
+    return s;
+  }
+  const glassMat = () => mat("#cfe7ee", { transparent: true, opacity: 0.5, roughness: 0.1 });
+
+  /* ---------- 主題造型：每座島是一個竹北地標 ---------- */
   const BUILDERS = {
+    // 台大醫院新竹分院生醫醫院（竹北院區）
     care(g, c) {
-      const houses = [[-1.7, -0.6, "#f4e3c8", "#c9705a"], [0.3, -1.9, "#f2d4b9", "#7fa1b6"], [1.9, -0.3, "#efe6d2", c], [-0.4, 1.0, "#f6e9d6", "#c9705a"], [1.4, 1.8, "#f1dcc4", "#8aa86d"]];
-      houses.forEach(([x, z, col, roofC], i) => building(g, { w: 1.05, h: 0.75 + (i % 2) * 0.35, d: 0.95, color: col, x, z, rot: (i * 0.7) % 0.6, roof: "gable", roofColor: roofC }));
-      tree(g, -2.4, 1.2, 1.0); tree(g, -0.9, -2.2, 0.9, "#93bf72"); tree(g, 2.6, 1.0, 0.8); tree(g, 0.2, 2.6, 0.9, "#6fa361", 1);
-      bench(g, -1.4, 2.2); lamp(g, -2.2, -1.9); lamp(g, 2.4, -1.6);
-      walker(g, [-1.8, 1.8], [0.8, 0.2], "#d9774b", 0.6);
-      walker(g, [0.6, -0.6], [2.4, -1.4], "#4f9da6", 0.45, 1);
-      person(g, -1.1, 2.3, "#8b6fb0"); person(g, -1.25, 2.35, "#e1b54a");
+      building(g, { w: 2.6, h: 2.5, d: 1.1, color: "#f7f6f2", x: -0.3, z: -1.5, roof: "flat", roofColor: "#d9dde0" });
+      building(g, { w: 1.3, h: 1.0, d: 1.5, color: "#eef2f1", x: 1.75, z: -1.0, roof: "flat", roofColor: "#9fc7c0" });
+      // 立面紅十字
+      box(g, 0.42, 0.12, 0.04, "#d6453d", -0.3, TOP + 2.0, -0.92);
+      box(g, 0.12, 0.42, 0.04, "#d6453d", -0.3, TOP + 1.85, -0.92);
+      // 屋頂停機坪
+      g.add(mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.04, 20), mat("#5d6470"), -0.3, TOP + 2.58, -1.5));
+      box(g, 0.06, 0.02, 0.34, "#ffffff", -0.42, TOP + 2.6, -1.5);
+      box(g, 0.06, 0.02, 0.34, "#ffffff", -0.18, TOP + 2.6, -1.5);
+      box(g, 0.24, 0.02, 0.06, "#ffffff", -0.3, TOP + 2.6, -1.5);
+      // 入口雨遮
+      box(g, 1.3, 0.06, 0.6, c, -0.3, TOP + 0.72, -0.65);
+      box(g, 0.05, 0.72, 0.05, "#cfd4d8", -0.9, TOP, -0.4); box(g, 0.05, 0.72, 0.05, "#cfd4d8", 0.3, TOP, -0.4);
+      // 迴車道與中央花圃
+      decal(g, new THREE.RingGeometry(0.5, 0.85, 24), "#d6cdbb", -0.3, 0.55);
+      decal(g, new THREE.CircleGeometry(0.5, 24), "#9cc97a", -0.3, 0.55, 0.016);
+      tree(g, -0.3, 0.55, 0.7, "#93bf72");
+      // 救護車（警示燈閃爍）
+      const amb = new THREE.Group();
+      const ab = rbox(0.85, 0.42, 0.42, "#ffffff", 0.08); ab.position.y = 0.3; ab.castShadow = true; amb.add(ab);
+      box(amb, 0.87, 0.07, 0.44, "#d6453d", 0, 0.24, 0);
+      const sirenMat = track(new THREE.MeshStandardMaterial({ color: "#ff6b5e", emissive: "#ff3b2e", emissiveIntensity: 0.6 }));
+      amb.add(mesh(new THREE.BoxGeometry(0.16, 0.06, 0.12), sirenMat, 0.18, 0.54, 0, false));
+      wheels(amb, [[-0.27, 0.2], [0.27, 0.2], [-0.27, -0.2], [0.27, -0.2]]);
+      amb.position.set(1.7, TOP, 0.6); amb.rotation.y = -0.4; g.add(amb);
+      anims.push((t) => (sirenMat.emissiveIntensity = Math.sin(t * 6) > 0 ? 1.2 : 0.2));
+      // 院區花園
+      tree(g, -2.5, 0.2, 0.9); tree(g, -2.2, 1.6, 0.85, "#6fa361", 1); tree(g, 0.9, 2.3, 0.8, "#93bf72"); tree(g, 2.6, -0.2, 0.75);
+      bench(g, -1.6, 1.9); bench(g, -0.6, 2.4, 0.5); lamp(g, -1.4, 0.2); lamp(g, 0.9, 1.4);
+      walker(g, [-2.0, 2.3], [-0.6, 1.6], "#d9774b", 0.35);
+      walker(g, [-1.0, -0.2], [0.6, 1.6], "#4f9da6", 0.45, 1);
+      person(g, -1.75, 2.05, "#8b6fb0"); person(g, -1.45, 2.05, "#e1b54a"); person(g, 1.1, 0.0, "#5a8f5a");
     },
+    // 竹北市公所
     service(g, c) {
-      building(g, { w: 2.3, h: 1.1, d: 1.5, color: "#f6f2ea", x: 0, z: -0.7, roof: "flat", roofColor: c });
-      box(g, 2.5, 0.08, 0.7, c, 0, TOP + 0.85, 0.35); // 雨遮
-      box(g, 0.06, 0.85, 0.06, "#7b7f88", -1.1, TOP, 0.65); box(g, 0.06, 0.85, 0.06, "#7b7f88", 1.1, TOP, 0.65);
-      // 服務站招牌
-      box(g, 0.07, 1.6, 0.07, "#6a6f78", -1.8, TOP, 1.2);
-      const sign = mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.08, 18), mat(c), -1.8, TOP + 1.75, 1.2);
-      sign.rotation.x = Math.PI / 2; g.add(sign);
-      box(g, 0.07, 0.24, 0.1, "#ffffff", -1.8, TOP + 1.61, 1.22); box(g, 0.07, 0.07, 0.1, "#ffffff", -1.8, TOP + 1.9, 1.22);
-      // 小貨車
-      const van = rbox(0.9, 0.45, 0.45, "#ffffff", 0.1); van.position.set(1.4, TOP + 0.3, 1.6); van.castShadow = true; g.add(van);
-      box(g, 0.92, 0.08, 0.47, c, 1.4, TOP + 0.26, 1.6);
-      [[1.1, 1.38], [1.7, 1.38], [1.1, 1.82], [1.7, 1.82]].forEach(([x, z]) => {
-        const w = mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 10), mat("#333840"), x, TOP + 0.09, z); w.rotation.x = Math.PI / 2; g.add(w);
-      });
-      // 小攤亭
-      building(g, { w: 0.7, h: 0.7, d: 0.7, color: "#f3e3c3", x: 1.9, z: -1.4, roof: "gable", roofColor: c });
-      tree(g, -2.3, -1.2); tree(g, 2.5, 0.2, 0.8, "#93bf72"); tree(g, 0.3, 2.5, 0.9, "#6fa361", 1);
-      for (let i = 0; i < 4; i++) person(g, -0.6 + i * 0.32, 1.0, ["#d9774b", "#4f9da6", "#e1b54a", "#8b6fb0"][i]);
-      walker(g, [-2.0, 0.4], [-0.6, 2.2], "#5a8f5a", 0.5);
-      lamp(g, 1.0, 2.6);
-    },
-    edu(g, c) {
-      building(g, { w: 3.4, h: 1.2, d: 0.95, color: "#f2e4c6", x: 0, z: -1.4, roof: "flat", roofColor: "#c9705a" });
-      building(g, { w: 0.95, h: 1.2, d: 1.6, color: "#f2e4c6", x: -1.75, z: -0.15, roof: "flat", roofColor: "#c9705a" });
-      const tower = building(g, { w: 0.75, h: 2.1, d: 0.75, color: "#f7eedb", x: 0.2, z: -1.4, roof: "gable", roofColor: c, win: false });
-      const clock = mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 16), mat("#ffffff"), 0, 1.65, 0.39);
-      clock.rotation.x = Math.PI / 2; tower.add(clock);
-      box(tower, 0.02, 0.15, 0.02, "#333", 0, 1.62, 0.42);
-      // 操場跑道
-      const track = mesh(new THREE.RingGeometry(0.75, 1.15, 28), mat("#d4805f", { side: THREE.DoubleSide }), 0.7, TOP + 0.015, 1.25, false);
-      track.rotation.x = -Math.PI / 2; track.scale.set(1.45, 1, 1); g.add(track);
-      const field = mesh(new THREE.CircleGeometry(0.75, 28), mat("#8cc06e"), 0.7, TOP + 0.012, 1.25, false);
-      field.rotation.x = -Math.PI / 2; field.scale.set(1.45, 1, 1); g.add(field);
+      building(g, { w: 3.2, h: 1.75, d: 1.2, color: "#f1ece2", x: 0, z: -1.4, roof: "flat", roofColor: "#c9c1b0" });
+      building(g, { w: 1.0, h: 2.3, d: 1.3, color: "#e6ddcc", x: 0, z: -1.35, roof: "flat", roofColor: c, win: false });
+      box(g, 0.62, 1.7, 0.03, windowMat, 0, TOP + 0.5, -0.69);
+      // 入口門廊與台階
+      box(g, 1.4, 0.08, 0.7, "#f6f2ea", 0, TOP + 0.62, -0.45);
+      [-0.6, -0.2, 0.2, 0.6].forEach((x) => g.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.62, 8), mat("#ffffff"), x, TOP + 0.31, -0.18)));
+      box(g, 1.6, 0.05, 0.3, "#d9d2c3", 0, TOP, 0.05); box(g, 1.6, 0.05, 0.2, "#d9d2c3", 0, TOP + 0.05, -0.05);
+      // 廣場噴水池
+      decal(g, new THREE.CircleGeometry(1.6, 6), "#e8dfcd", 0, 1.3);
+      g.add(mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.12, 20), mat("#cfc8b8"), 0, TOP + 0.06, 1.3));
+      decal(g, new THREE.CircleGeometry(0.48, 20), "#8fd3d6", 0, 1.3, 0.125);
+      const jet = mesh(new THREE.ConeGeometry(0.1, 0.5, 8), mat("#c8eef0", { transparent: true, opacity: 0.75 }), 0, TOP + 0.37, 1.3, false);
+      g.add(jet);
+      anims.push((t) => (jet.scale.y = 0.8 + Math.sin(t * 3) * 0.2));
       // 旗桿
-      box(g, 0.04, 1.6, 0.04, "#d0d0d0", -1.0, TOP, 0.6);
-      box(g, 0.02, 0.24, 0.4, c, -1.0, TOP + 1.32, 0.8);
-      tree(g, 2.4, -0.4, 0.9); tree(g, -2.5, 1.4, 0.9, "#93bf72", 1); tree(g, 2.3, -2.0, 0.8, "#6fa361");
-      walker(g, [-0.5, 1.25], [1.9, 1.25], "#e1b54a", 1.4);
-      walker(g, [1.9, 0.6], [-0.4, 1.9], "#d9774b", 1.2, 2);
-      person(g, -1.2, 1.4, "#4f9da6");
+      [-1.2, -1.45, -1.7].forEach((x, i) => {
+        box(g, 0.035, 1.5, 0.035, "#d0d0d0", x, TOP, 0.1);
+        box(g, 0.02, 0.2, 0.32, [c, "#e1b54a", "#4f9da6"][i], x, TOP + 1.25, 0.27);
+      });
+      // 31 里服務車
+      const van = rbox(0.9, 0.45, 0.45, "#ffffff", 0.1); van.position.set(1.9, TOP + 0.3, 1.5); van.castShadow = true; g.add(van);
+      box(g, 0.92, 0.08, 0.47, c, 1.9, TOP + 0.26, 1.5);
+      wheels(g, [[1.6, 1.28], [2.2, 1.28], [1.6, 1.72], [2.2, 1.72]]);
+      tree(g, -2.5, -0.6, 0.85); tree(g, 2.5, -0.4, 0.8, "#93bf72"); tree(g, -2.2, 1.9, 0.85, "#6fa361", 1); tree(g, 0.6, 2.8, 0.7);
+      for (let i = 0; i < 4; i++) person(g, -0.45 + i * 0.3, 0.35, ["#d9774b", "#4f9da6", "#e1b54a", "#8b6fb0"][i]);
+      walker(g, [-2.0, 1.0], [-0.8, 2.4], "#5a8f5a", 0.5);
+      walker(g, [1.0, 2.3], [1.3, 0.4], "#e57d6a", 0.4, 2);
+      lamp(g, 1.2, 0.5); lamp(g, -1.2, 2.3);
     },
-    traffic(g, c) {
-      const road = "#6b6f77";
-      box(g, 6.6, 0.03, 0.95, road, 0, TOP, 0.3);
-      box(g, 0.95, 0.03, 6.4, road, -0.6, TOP, 0);
-      for (let i = -3; i <= 3; i++) {
-        if (Math.abs(i * 0.9 + 0.6) < 0.6) continue;
-        box(g, 0.4, 0.035, 0.06, "#ffffff", i * 0.9, TOP, 0.3);
+    // 竹北市立圖書館福德分館：舊建物翻新，一樓落地窗面向福德廣場，以星空為主題
+    edu(g, c) {
+      building(g, { w: 3.0, h: 1.5, d: 1.3, color: "#f4efe6", x: 0, z: -1.4, roof: "flat", roofColor: "#d8cdb8", win: false });
+      box(g, 2.6, 0.3, 0.03, windowMat, 0, TOP + 1.0, -0.73);
+      // 書架（隔著落地窗看得到）
+      const spines = ["#d9774b", "#4f9da6", "#e1b54a", "#8b6fb0", "#5a8f5a", c];
+      for (let i = 0; i < 6; i++) {
+        box(g, 0.36, 0.6, 0.12, "#b9875c", -1.15 + i * 0.46, TOP, -1.0);
+        for (let k = 0; k < 4; k++) box(g, 0.07, 0.2, 0.1, spines[(i + k) % spines.length], -1.27 + i * 0.46 + k * 0.08, TOP + 0.36, -0.96);
       }
-      for (let i = -3; i <= 3; i++) if (Math.abs(i * 0.9 - 0.3) > 0.6) box(g, 0.06, 0.035, 0.4, "#ffffff", -0.6, TOP, i * 0.9);
-      // 自行車道（綠）
-      box(g, 6.0, 0.035, 0.32, "#5fae6e", 0, TOP, 1.15);
-      // 斑馬線
-      for (let i = 0; i < 5; i++) box(g, 0.1, 0.04, 0.5, "#ffffff", -1.35 + i * 0.18 + 1.5, TOP, 0.3);
-      // 公車
+      // 一樓落地窗 + 窗框
+      box(g, 2.9, 0.78, 0.03, glassMat(), 0, TOP + 0.02, -0.73);
+      for (let i = 0; i <= 7; i++) box(g, 0.03, 0.78, 0.05, "#3e4a52", -1.45 + i * (2.9 / 7), TOP + 0.02, -0.72);
+      box(g, 3.1, 0.06, 0.45, "#3e4a52", 0, TOP + 0.8, -0.55);
+      // 屋頂的太陽、月亮、星星
+      const sunMat = mat("#f2b84b", { emissive: "#f2a33b", emissiveIntensity: 0.35 });
+      const sunBall = mesh(new THREE.IcosahedronGeometry(0.26, 1), sunMat, -1.0, TOP + 1.95, -1.4);
+      g.add(sunBall);
+      const moon = mesh(new THREE.TorusGeometry(0.22, 0.07, 6, 18, Math.PI * 1.25), mat("#f4e7b0", { emissive: "#f0d77a", emissiveIntensity: 0.3 }), 0.1, TOP + 1.95, -1.4);
+      moon.rotation.z = 1.2; g.add(moon);
+      const starGeoE = new THREE.ExtrudeGeometry(starShape(0.16, 0.07), { depth: 0.05, bevelEnabled: false });
+      const starsE = [[0.75, 1.85], [1.1, 2.15], [1.0, 1.7]].map(([x, y], i) => {
+        const s = mesh(i ? starGeoE.clone() : starGeoE, mat("#ffd86b", { emissive: "#ffc93b", emissiveIntensity: 0.5 }), x, TOP + y, -1.4);
+        s.scale.setScalar(i === 1 ? 0.8 : 1); g.add(s); return s;
+      });
+      anims.push((t) => {
+        sunBall.rotation.y = t * 0.4;
+        starsE.forEach((s, i) => (s.rotation.y = t * 0.8 + i));
+      });
+      // 福德廣場（地磚）
+      decal(g, new THREE.PlaneGeometry(4.2, 2.0), "#eadfca", 0, 0.75);
+      for (let i = 0; i < 6; i++) decal(g, new THREE.PlaneGeometry(0.03, 2.0), "#d6c7ab", -1.75 + i * 0.7, 0.75, 0.014);
+      // 戶外閱讀座
+      [[-1.4, 0.6], [1.3, 0.5]].forEach(([x, z]) => {
+        g.add(mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.18, 16), mat("#c69a6b"), x, TOP + 0.09, z));
+        tree(g, x, z, 0.7, "#93bf72");
+      });
+      tree(g, -2.5, -0.4, 0.85, "#6fa361", 1); tree(g, 2.5, -0.5, 0.8); tree(g, -2.1, 2.2, 0.8, "#93bf72"); tree(g, 2.2, 2.1, 0.8, "#6fa361");
+      person(g, -0.9, 0.9, "#4f9da6"); person(g, -0.6, 1.0, "#e1b54a"); person(g, 0.8, 0.4, "#d9774b");
+      walker(g, [-1.6, 2.3], [0.4, 0.3], "#e1b54a", 0.6);
+      walker(g, [1.8, 1.6], [0.0, 2.4], "#8b6fb0", 0.5, 2);
+      lamp(g, -0.3, 1.9); lamp(g, 1.6, 1.4);
+    },
+    // 高鐵新竹站（弧形大屋頂 + 高架軌道）與光明地下道
+    traffic(g, c) {
+      // 高架橋
+      const deckY = TOP + 1.2;
+      [-3.0, -1.0, 0.0, 1.0, 2.0, 3.0].forEach((x) => box(g, 0.22, 1.2, 0.3, "#d7d3cb", x, TOP, -1.3));
+      box(g, 6.8, 0.14, 0.72, "#e4e0d8", 0, deckY, -1.3);
+      box(g, 6.8, 0.1, 0.04, "#c9c4ba", 0, deckY + 0.14, -1.64); box(g, 6.8, 0.1, 0.04, "#c9c4ba", 0, deckY + 0.14, -0.96);
+      // 高鐵列車（兩端車頭）
+      const train = new THREE.Group();
+      const carMat = "#f6f6f4";
+      for (let i = 0; i < 3; i++) {
+        const car = rbox(0.9, 0.32, 0.34, carMat, 0.1); car.position.set(-0.94 + i * 0.94, 0.2, 0); car.castShadow = true; train.add(car);
+        box(train, 0.86, 0.05, 0.35, "#e8713c", -0.94 + i * 0.94, 0.13, 0);
+        box(train, 0.7, 0.07, 0.35, windowMat, -0.94 + i * 0.94, 0.24, 0);
+      }
+      [-1, 1].forEach((sgn) => {
+        const nose = mesh(new THREE.ConeGeometry(0.17, 0.55, 10), mat(carMat), sgn * 1.65, 0.2, 0);
+        nose.rotation.z = -sgn * Math.PI / 2; nose.scale.set(1, 1, 0.95); train.add(nose);
+      });
+      train.position.set(0, deckY + 0.14, -1.3);
+      g.add(train);
+      anims.push((t) => (train.position.x = Math.sin(t * 0.25) * 1.3));
+      // 車站弧形屋頂
+      const shell = mesh(new THREE.CylinderGeometry(1.25, 1.25, 2.6, 18, 1, true, 0, Math.PI), mat("#dbe7ee", { side: THREE.DoubleSide, transparent: true, opacity: 0.78 }), 1.0, TOP + 0.5, -1.3);
+      shell.rotation.z = Math.PI / 2; g.add(shell);
+      [-1.2, -0.4, 0.4, 1.2].forEach((dx) => {
+        const rib = mesh(new THREE.TorusGeometry(1.25, 0.035, 5, 18, Math.PI), mat(c), 1.0 + dx, TOP + 0.5, -1.3);
+        rib.rotation.y = Math.PI / 2; g.add(rib);
+      });
+      box(g, 2.5, 0.5, 2.3, "#eef1f3", 1.0, TOP, -1.3);
+      box(g, 2.3, 0.3, 0.03, windowMat, 1.0, TOP + 0.1, -0.14);
+      // 光明地下道：道路下坡穿過高架橋
+      decal(g, new THREE.PlaneGeometry(0.9, 2.5), "#6b6f77", -2.0, 1.55);
+      decal(g, new THREE.PlaneGeometry(0.9, 0.9), "#4a4e55", -2.0, -0.15);
+      box(g, 0.08, 0.3, 1.0, "#cfc8b8", -2.48, TOP, -0.15); box(g, 0.08, 0.3, 1.0, "#cfc8b8", -1.52, TOP, -0.15);
+      box(g, 1.1, 0.42, 0.3, "#cfc8b8", -2.0, TOP, -0.75);
+      box(g, 0.8, 0.3, 0.02, "#2b2f35", -2.0, TOP, -0.59);
+      box(g, 1.14, 0.06, 0.34, c, -2.0, TOP + 0.42, -0.75);
+      // 平面道路、公車、自行車道
+      const road = "#6b6f77";
+      box(g, 6.6, 0.03, 0.9, road, 0, TOP, 0.95);
+      for (let i = -3; i <= 3; i++) if (Math.abs(i * 0.9 + 2.0) > 0.6) box(g, 0.4, 0.035, 0.06, "#ffffff", i * 0.9, TOP, 0.95);
+      for (let i = 0; i < 5; i++) box(g, 0.1, 0.04, 0.5, "#ffffff", -1.2 + i * 0.18, TOP, 0.95);
+      box(g, 6.2, 0.035, 0.32, "#5fae6e", 0, TOP, 1.75);
       const bus = new THREE.Group();
       const bb = rbox(1.35, 0.5, 0.5, c, 0.1); bb.position.y = 0.33; bb.castShadow = true; bus.add(bb);
-      box(bus, 1.2, 0.14, 0.52, "#e9f4f7", 0.04, 0.37, 0, undefined).material = windowMat;
-      [[-0.4, 0.22], [0.4, 0.22], [-0.4, -0.22], [0.4, -0.22]].forEach(([x, z]) => {
-        const w = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 10), mat("#2e3238"), x, 0.1, z); w.rotation.x = Math.PI / 2; bus.add(w);
-      });
-      bus.position.set(-2.6, TOP, 0.12);
+      box(bus, 1.2, 0.14, 0.52, windowMat, 0.04, 0.37, 0);
+      wheels(bus, [[-0.4, 0.22], [0.4, 0.22], [-0.4, -0.22], [0.4, -0.22]], 0.1);
       g.add(bus);
       anims.push((t) => {
         const k = (Math.sin(t * 0.35) + 1) / 2;
-        bus.position.x = lerp(-2.7, 2.7, k);
-        bus.position.z = Math.cos(t * 0.35) > 0 ? 0.08 : 0.52;
+        bus.position.set(lerp(-2.6, 2.6, k), TOP, Math.cos(t * 0.35) > 0 ? 0.75 : 1.15);
         bus.rotation.y = Math.cos(t * 0.35) > 0 ? 0 : Math.PI;
       });
-      // 自行車
       const makeBike = (color) => {
         const b = new THREE.Group();
         [-0.12, 0.12].forEach((x) => b.add(mesh(new THREE.TorusGeometry(0.08, 0.015, 5, 12), mat("#333"), x, 0.09, 0)));
         box(b, 0.26, 0.02, 0.02, color, 0, 0.13, 0);
-        const rider = person(b, 0, 0, color); rider.position.y = 0.0; rider.rotation.y = Math.PI / 2; rider.scale.multiplyScalar(0.8);
+        const rider = person(b, 0, 0, color); rider.position.y = 0; rider.rotation.y = Math.PI / 2; rider.scale.multiplyScalar(0.8);
         return b;
       };
-      const bikes = [makeBike("#e1b54a"), makeBike("#4f9da6")];
-      bikes.forEach((b, i) => {
-        b.position.set(0, TOP, 1.15); g.add(b);
-        anims.push((t) => {
-          const k = ((t * 0.12 + i * 0.5) % 1);
-          b.position.x = lerp(-2.8, 2.8, k);
-        });
+      [makeBike("#e1b54a"), makeBike("#4f9da6")].forEach((b, i) => {
+        b.position.set(0, TOP, 1.75); g.add(b);
+        anims.push((t) => (b.position.x = lerp(-2.8, 2.8, (t * 0.12 + i * 0.5) % 1)));
       });
-      // 公車亭
-      box(g, 0.9, 0.05, 0.4, c, 1.6, TOP + 0.6, -0.5);
-      box(g, 0.04, 0.6, 0.04, "#888", 1.2, TOP, -0.6); box(g, 0.04, 0.6, 0.04, "#888", 2.0, TOP, -0.6);
-      box(g, 0.8, 0.45, 0.03, "#cfe6ee", 1.6, TOP + 0.1, -0.68, { transparent: true, opacity: 0.6 });
-      // 紅綠燈
-      box(g, 0.05, 0.9, 0.05, "#555b63", 0.2, TOP, -0.45);
-      box(g, 0.12, 0.3, 0.1, "#2e3238", 0.2, TOP + 0.9, -0.45);
-      g.add(mesh(new THREE.SphereGeometry(0.035, 6, 5), mat("#5fe08a", { emissive: "#3fd070", emissiveIntensity: 0.8 }), 0.2, TOP + 1.0, -0.39, false));
-      // 高鐵站意象 + 辦公樓
-      building(g, { w: 1.9, h: 0.75, d: 1.2, color: "#eef1f3", x: 1.7, z: -2.0, roof: "flat", roofColor: "#9fb3c2" });
-      const arch = mesh(new THREE.CylinderGeometry(0.75, 0.75, 1.9, 12, 1, true, 0, Math.PI), mat("#cfdbe4", { side: THREE.DoubleSide }), 1.7, TOP + 0.75, -2.0);
-      arch.rotation.z = Math.PI / 2; arch.scale.set(1, 1, 0.55); g.add(arch);
-      building(g, { w: 0.9, h: 1.7, d: 0.9, color: "#e7e1d3", x: -2.0, z: -1.6, roof: "flat", roofColor: "#b9b2a2" });
-      building(g, { w: 0.9, h: 1.1, d: 0.8, color: "#f2dcc0", x: -2.2, z: 2.3, roof: "gable", roofColor: "#c9705a" });
-      tree(g, 1.2, 2.3, 0.85); tree(g, 2.4, 2.0, 0.8, "#93bf72"); tree(g, -1.5, -2.8, 0.7, "#6fa361", 1);
-      lamp(g, 0.6, -0.4); lamp(g, -1.6, 0.9);
+      // 公車亭、紅綠燈
+      box(g, 0.9, 0.05, 0.4, c, 2.6, TOP + 0.6, 0.25);
+      box(g, 0.04, 0.6, 0.04, "#888", 2.2, TOP, 0.15); box(g, 0.04, 0.6, 0.04, "#888", 3.0, TOP, 0.15);
+      box(g, 0.05, 0.9, 0.05, "#555b63", -1.4, TOP, 0.4);
+      box(g, 0.12, 0.3, 0.1, "#2e3238", -1.4, TOP + 0.9, 0.4);
+      g.add(mesh(new THREE.SphereGeometry(0.035, 6, 5), mat("#5fe08a", { emissive: "#3fd070", emissiveIntensity: 0.8 }), -1.4, TOP + 1.0, 0.46, false));
+      tree(g, 0.2, 2.5, 0.8); tree(g, 1.6, 2.4, 0.8, "#93bf72"); tree(g, -1.0, 2.6, 0.7, "#6fa361", 1); tree(g, -3.0, 0.2, 0.7);
+      walker(g, [0.2, 0.2], [2.4, 0.4], "#5d6470", 0.5);
+      lamp(g, -0.4, 0.3); lamp(g, -2.6, 2.4);
     },
+    // 頭前溪河濱：堤防、自行車道、抽水站、不斷電活動中心
     resilience(g, c) {
-      building(g, { w: 2.2, h: 0.95, d: 1.7, color: "#f3ebdc", x: -0.6, z: -0.8, roof: "flat", roofColor: "#d8d0bf" });
-      // 屋頂太陽能板
-      const panel = (x, y, z, rot = 0) => {
-        const p = mesh(new THREE.BoxGeometry(0.6, 0.04, 0.42), mat("#2f4f7f", { roughness: 0.3, metalness: 0.3 }), x, y, z);
-        p.rotation.x = -0.4; p.rotation.y = rot; g.add(p);
-        return p;
-      };
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) panel(-1.3 + i * 0.68, TOP + 1.12, -1.2 + j * 0.62);
-      // 地面太陽能陣列
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
-        box(g, 0.05, 0.25, 0.05, "#888", 0.8 + i * 0.68, TOP, 1.1 + j * 0.62);
-        panel(0.8 + i * 0.68, TOP + 0.33, 1.1 + j * 0.62);
+      const rz = 0.7;
+      decal(g, new THREE.PlaneGeometry(6.8, 1.3), "#7cc6cf", 0, rz, 0.01, { roughness: 0.2 });
+      // 堤防（斜坡 + 堤頂自行車道）
+      const leveeShape = new THREE.Shape();
+      leveeShape.moveTo(-0.3, 0); leveeShape.lineTo(0.3, 0); leveeShape.lineTo(0.13, 0.3); leveeShape.lineTo(-0.13, 0.3); leveeShape.closePath();
+      [-1, 1].forEach((s) => {
+        const geo = new THREE.ExtrudeGeometry(leveeShape, { depth: 6.4, bevelEnabled: false });
+        geo.translate(0, 0, -3.2);
+        const levee = mesh(geo, mat("#a9c48a"), 0, TOP, rz + s * 0.92);
+        levee.rotation.y = Math.PI / 2; g.add(levee);
+        box(g, 6.4, 0.02, 0.22, "#d9a066", 0, TOP + 0.3, rz + s * 0.92);
+      });
+      // 水流
+      const foam = [];
+      for (let i = 0; i < 6; i++) {
+        const f = mesh(new THREE.BoxGeometry(0.4, 0.02, 0.05), mat("#ffffff", { transparent: true, opacity: 0.7 }), 0, TOP + 0.03, rz - 0.4 + (i % 3) * 0.4, false);
+        g.add(f); foam.push(f);
       }
-      // 儲能電池櫃
+      anims.push((t) => foam.forEach((f, i) => (f.position.x = -3.2 + ((t * 0.35 + i * 1.1) % 6.4))));
+      // 跨溪橋
+      box(g, 0.7, 0.1, 2.4, "#c9c4ba", 1.7, TOP + 0.3, rz);
+      box(g, 0.04, 0.16, 2.4, c, 1.37, TOP + 0.4, rz); box(g, 0.04, 0.16, 2.4, c, 2.03, TOP + 0.4, rz);
+      // 水位標尺
+      for (let i = 0; i < 5; i++) box(g, 0.07, 0.15, 0.07, i % 2 ? "#ffffff" : "#d6453d", -0.6, TOP + i * 0.15, rz + 0.3);
+      // 抽水站（北岸）
+      building(g, { w: 1.3, h: 1.0, d: 0.9, color: "#e9e4d8", x: -1.7, z: -1.3, roof: "flat", roofColor: "#7f8a95" });
+      [-2.0, -1.5].forEach((x) => {
+        const pipe = mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.2, 8), mat("#5d7ea0"), x, TOP + 0.22, -0.35);
+        pipe.rotation.x = Math.PI / 2; g.add(pipe);
+      });
+      // 不斷電活動中心（屋頂太陽能 + 儲能櫃）
+      building(g, { w: 1.6, h: 0.85, d: 1.0, color: "#f3ebdc", x: 0.9, z: -1.5, roof: "flat", roofColor: "#d8d0bf" });
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
+        const p = mesh(new THREE.BoxGeometry(0.6, 0.04, 0.4), mat("#2f4f7f", { roughness: 0.3, metalness: 0.3 }), 0.55 + i * 0.68, TOP + 1.0, -1.75 + j * 0.48);
+        p.rotation.x = -0.4; g.add(p);
+      }
       for (let i = 0; i < 2; i++) {
-        box(g, 0.7, 0.55, 0.42, "#f4f6f5", 1.7, TOP, -1.0 + i * 0.55);
-        box(g, 0.72, 0.1, 0.44, c, 1.7, TOP + 0.38, -1.0 + i * 0.55);
+        box(g, 0.42, 0.5, 0.4, "#f4f6f5", 2.2 + i * 0.48, TOP, -1.4);
+        box(g, 0.44, 0.08, 0.42, c, 2.2 + i * 0.48, TOP + 0.36, -1.4);
       }
-      // 風機
-      box(g, 0.07, 2.4, 0.07, "#f2f2f2", -2.1, TOP, 1.2);
+      // 南岸：風機、防災旗
+      box(g, 0.07, 2.4, 0.07, "#f2f2f2", -2.4, TOP, 2.3);
       const rotor = new THREE.Group();
-      rotor.position.set(-2.1, TOP + 2.4, 1.26);
+      rotor.position.set(-2.4, TOP + 2.4, 2.36);
       for (let i = 0; i < 3; i++) {
-        const blade = mesh(new THREE.BoxGeometry(0.07, 0.75, 0.02), mat("#ffffff"), 0, 0.37, 0);
-        const holder = new THREE.Group(); holder.rotation.z = (i * Math.PI * 2) / 3; holder.add(blade); rotor.add(holder);
+        const holder = new THREE.Group(); holder.rotation.z = (i * Math.PI * 2) / 3;
+        holder.add(mesh(new THREE.BoxGeometry(0.07, 0.75, 0.02), mat("#ffffff"), 0, 0.37, 0)); rotor.add(holder);
       }
       rotor.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), mat(c)));
       g.add(rotor);
       anims.push((t, dt) => (rotor.rotation.z -= dt * 1.8));
-      // 防災旗
-      box(g, 0.04, 1.2, 0.04, "#cfcfcf", 0.3, TOP, 0.4);
-      box(g, 0.02, 0.22, 0.36, c, 0.3, TOP + 0.95, 0.58);
-      tree(g, -2.4, -1.2, 0.8, "#6fa361", 1); tree(g, -1.0, 2.4, 0.9);
-      walker(g, [-1.6, 0.6], [0.2, 0.9], "#e1b54a", 0.5);
-      lamp(g, -0.2, 0.8);
+      box(g, 0.04, 1.2, 0.04, "#cfcfcf", 0.4, TOP, 2.2);
+      box(g, 0.02, 0.22, 0.36, c, 0.4, TOP + 0.95, 2.38);
+      tree(g, 1.6, 2.6, 0.8, "#6fa361", 1); tree(g, -0.8, 2.6, 0.75); tree(g, 2.7, -0.3, 0.7, "#93bf72");
+      walker(g, [-2.8, rz - 0.9], [1.0, rz - 0.9], "#e1b54a", 0.35);
+      walker(g, [2.6, rz + 0.9], [-1.6, rz + 0.9], "#d9774b", 0.3, 1.5);
+      lamp(g, -0.6, -0.5);
     },
+    // 台元科技園區：玻璃帷幕大樓群
     digital(g, c) {
-      // 發光資料塔
-      const tw = new THREE.Group();
-      g.add(tw);
-      const levels = [[1.2, 0.9], [1.0, 0.9], [0.82, 0.9], [0.62, 0.9]];
-      let y = TOP;
-      levels.forEach(([s, h], i) => {
-        const b = rbox(s, h, s, i % 2 ? "#2c3654" : "#344166", 0.06);
-        b.position.set(0, y + h / 2, 0); b.castShadow = true; tw.add(b);
-        // 發光橫帶
-        const band = mesh(new THREE.BoxGeometry(s + 0.03, 0.06, s + 0.03), i % 2 ? neonMat2 : neonMat, 0, y + h - 0.12, 0, false);
-        tw.add(band);
-        for (let k = 0; k < 4; k++) {
-          const a = (k * Math.PI) / 2;
-          const strip = mesh(new THREE.BoxGeometry(0.04, h * 0.7, 0.04), neonMat, Math.cos(a + Math.PI / 4) * s * 0.7, y + h / 2, Math.sin(a + Math.PI / 4) * s * 0.7, false);
-          tw.add(strip);
-        }
-        y += h;
-      });
-      box(tw, 0.04, 0.8, 0.04, "#c9d2e0", 0, y, 0);
-      const beacon = mesh(new THREE.SphereGeometry(0.12, 10, 8), neonMat, 0, y + 0.85, 0, false);
+      const tower = (x, z, w, d, h, tint) => {
+        const b = rbox(w, h, d, tint, 0.05);
+        b.material = mat(tint, { roughness: 0.25, metalness: 0.35 });
+        b.position.set(x, TOP + h / 2, z); b.castShadow = b.receiveShadow = true; g.add(b);
+        for (let y = 0.3; y < h - 0.1; y += 0.3) box(g, w + 0.02, 0.025, d + 0.02, "#f2f5f8", x, TOP + y, z);
+        box(g, w * 0.7, 0.12, d * 0.7, "#e3e8ee", x, TOP + h, z);
+        return TOP + h + 0.12;
+      };
+      const topY = tower(-0.6, -1.3, 1.2, 1.1, 3.0, "#8fb6cf");
+      tower(1.0, -1.7, 1.0, 0.9, 2.1, "#a7c7d6");
+      tower(2.0, -0.4, 0.9, 1.0, 1.5, "#9dbfd2");
+      tower(-2.2, -0.1, 0.9, 0.9, 1.2, "#b3cfdc");
+      // 頂樓智慧城市光環
+      const tw = new THREE.Group(); tw.position.set(-0.6, 0, -1.3); g.add(tw);
+      box(tw, 0.04, 0.6, 0.04, "#c9d2e0", 0, topY, 0);
+      const beacon = mesh(new THREE.SphereGeometry(0.11, 10, 8), neonMat, 0, topY + 0.65, 0, false);
       tw.add(beacon);
-      const rings = [];
-      [1.3, 2.4].forEach((ry, i) => {
-        const r = mesh(new THREE.TorusGeometry(0.95 - i * 0.2, 0.03, 6, 36), i ? neonMat2 : neonMat, 0, TOP + ry, 0, false);
-        r.rotation.x = Math.PI / 2; tw.add(r); rings.push(r);
+      const rings = [0.25, 0.55].map((ry, i) => {
+        const r = mesh(new THREE.TorusGeometry(0.85 - i * 0.2, 0.03, 6, 36), i ? neonMat2 : neonMat, 0, topY + ry, 0, false);
+        r.rotation.x = Math.PI / 2; tw.add(r); return r;
       });
-      // 漂浮資料方塊
       const cubes = [];
-      for (let i = 0; i < 7; i++) {
-        const cb = mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), i % 2 ? neonMat2 : neonMat, 0, 0, 0, false);
+      for (let i = 0; i < 6; i++) {
+        const cb = mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), i % 2 ? neonMat2 : neonMat, 0, 0, 0, false);
         g.add(cb); cubes.push(cb);
       }
       anims.push((t) => {
         rings[0].rotation.z = t * 0.6; rings[1].rotation.z = -t * 0.9;
-        rings[0].position.y = TOP + 1.3 + Math.sin(t * 1.2) * 0.12;
-        rings[1].position.y = TOP + 2.4 + Math.sin(t * 1.2 + 1) * 0.12;
+        beacon.scale.setScalar(1 + Math.sin(t * 3) * 0.15);
         cubes.forEach((cb, i) => {
           const a = t * 0.5 + (i * Math.PI * 2) / cubes.length;
-          cb.position.set(Math.cos(a) * 1.6, TOP + 1.2 + Math.sin(t * 1.3 + i) * 0.35 + (i % 3) * 0.4, Math.sin(a) * 1.6);
+          cb.position.set(0.3 + Math.cos(a) * 1.9, TOP + 1.6 + Math.sin(t * 1.3 + i) * 0.3 + (i % 3) * 0.35, 0.2 + Math.sin(a) * 1.6);
           cb.rotation.set(t + i, t * 0.7, 0);
         });
-        beacon.scale.setScalar(1 + Math.sin(t * 3) * 0.15);
       });
-      // 伺服器機櫃
-      for (let i = 0; i < 3; i++) {
-        box(g, 0.42, 0.7, 0.42, "#3a4562", -2.0 + i * 0.5, TOP, 1.6);
-        box(g, 0.3, 0.04, 0.43, neonMat, -2.0 + i * 0.5, TOP + 0.45, 1.6);
-      }
-      building(g, { w: 1.2, h: 1.3, d: 1.0, color: "#e6ebf2", x: 2.0, z: -1.3, roof: "flat", roofColor: c });
-      building(g, { w: 1.0, h: 0.9, d: 1.0, color: "#edf0f4", x: 1.9, z: 1.5, roof: "flat", roofColor: "#9fb3c2" });
-      tree(g, -2.2, -1.4, 0.8, "#6fa361", 1); tree(g, 0.6, 2.6, 0.75);
-      walker(g, [-1.9, 0.5], [-0.9, 2.4], "#4f9da6", 0.5);
+      // 園區廣場與智慧燈柱
+      decal(g, new THREE.CircleGeometry(1.3, 24), "#dfe5e8", 0.4, 1.3);
+      decal(g, new THREE.RingGeometry(0.5, 0.58, 24), "#9fb3c2", 0.4, 1.3, 0.016);
+      [[-0.8, 1.0], [1.6, 1.0], [0.4, 2.5], [-0.6, 2.2], [1.4, 2.2]].forEach(([x, z]) => {
+        box(g, 0.04, 0.7, 0.04, "#5d6470", x, TOP, z);
+        g.add(mesh(new THREE.BoxGeometry(0.1, 0.08, 0.1), neonMat, x, TOP + 0.74, z, false));
+      });
+      // 低層研發棟（綠屋頂）
+      building(g, { w: 1.3, h: 0.6, d: 0.9, color: "#eef1f4", x: -2.0, z: 1.6, roof: "flat", roofColor: "#8cc06e" });
+      tree(g, 2.6, 1.2, 0.75, "#6fa361", 1); tree(g, -2.8, -1.4, 0.7); tree(g, 2.4, -2.0, 0.7, "#93bf72");
+      walker(g, [-1.2, 0.5], [1.8, 1.8], "#4f9da6", 0.4);
+      walker(g, [0.0, 2.6], [1.2, 0.2], "#3a4660", 0.5, 2);
+      person(g, 0.1, 1.2, "#e1b54a");
     },
+    // 竹北水圳森林公園：生態水池、水圳、整治中的木棧道
     space(g, c) {
-      const pond = mesh(new THREE.CircleGeometry(1.0, 20), mat("#7cc6cf", { roughness: 0.2 }), 0.6, TOP + 0.015, 0.7, false);
-      pond.rotation.x = -Math.PI / 2; pond.scale.set(1.3, 1, 1); g.add(pond);
-      // 步道
-      const path = mesh(new THREE.RingGeometry(1.6, 1.95, 32), mat("#e6d3ad", { side: THREE.DoubleSide }), 0.3, TOP + 0.01, 0.3, false);
-      path.rotation.x = -Math.PI / 2; g.add(path);
+      const pond = decal(g, new THREE.CircleGeometry(1.0, 20), "#7cc6cf", 0.6, 0.6, 0.015, { roughness: 0.2 });
+      pond.scale.set(1.35, 1, 1);
+      // 水圳：從島邊引水入池
+      decal(g, new THREE.PlaneGeometry(0.32, 2.4), "#7cc6cf", 2.2, -1.0, 0.014, { roughness: 0.2 });
+      box(g, 0.06, 0.08, 2.4, "#b8b2a4", 2.0, TOP, -1.0); box(g, 0.06, 0.08, 2.4, "#b8b2a4", 2.4, TOP, -1.0);
+      // 環池步道
+      decal(g, new THREE.RingGeometry(1.6, 1.9, 32), "#e6d3ad", 0.4, 0.4);
+      // 木棧道：一段完工、一段施工中
+      box(g, 1.6, 0.06, 0.38, "#b9875c", -0.9, TOP + 0.12, 0.6);
+      for (let i = 0; i < 4; i++) box(g, 0.05, 0.12, 0.05, "#8a6a4a", -1.6 + i * 0.45, TOP, 0.45);
+      box(g, 0.7, 0.06, 0.38, "#d8c3a2", 0.6, TOP + 0.12, -0.55);
+      [[0.15, -0.8], [1.05, -0.8], [0.15, -0.3], [1.05, -0.3]].forEach(([x, z]) => {
+        g.add(mesh(new THREE.ConeGeometry(0.07, 0.22, 8), mat("#f08a3c"), x, TOP + 0.11, z));
+      });
+      box(g, 0.9, 0.12, 0.03, "#f2c230", 0.6, TOP + 0.25, -0.85);
       // 涼亭
       for (let i = 0; i < 6; i++) {
         const a = (i * Math.PI) / 3;
-        box(g, 0.05, 0.6, 0.05, "#f5efe2", -1.4 + Math.cos(a) * 0.38, TOP, -1.3 + Math.sin(a) * 0.38);
+        box(g, 0.05, 0.6, 0.05, "#f5efe2", -1.5 + Math.cos(a) * 0.38, TOP, -1.4 + Math.sin(a) * 0.38);
       }
-      g.add(mesh(new THREE.ConeGeometry(0.62, 0.42, 6), mat(c), -1.4, TOP + 0.8, -1.3));
-      // 樹叢
+      g.add(mesh(new THREE.ConeGeometry(0.62, 0.42, 6), mat(c), -1.5, TOP + 0.8, -1.4));
+      // 森林
       const rnd = seeded(11);
-      const spots = [[-2.6, 0.4], [-2.2, 1.6], [-1.0, 2.5], [2.6, -0.8], [2.2, -2.0], [0.6, -2.6], [-0.4, -2.2], [2.7, 1.2], [1.6, 2.4], [-2.6, -0.8]];
-      spots.forEach(([x, z], i) => tree(g, x, z, 0.75 + rnd() * 0.45, ["#7fb069", "#93bf72", "#6fa361", "#a5c97f"][i % 4], i % 3 === 0 ? 1 : 0));
-      // 鴨子
+      const spots = [[-2.7, 0.3], [-2.4, 1.5], [-1.4, 2.4], [-0.2, 2.7], [1.2, 2.5], [2.5, 1.5], [2.8, 0.3], [-2.6, -0.9], [-0.4, -2.3], [0.8, -2.5], [1.5, -1.8], [-2.0, -2.2], [2.9, -1.0]];
+      spots.forEach(([x, z], i) => tree(g, x, z, 0.7 + rnd() * 0.5, ["#7fb069", "#93bf72", "#6fa361", "#a5c97f"][i % 4], i % 3 === 0 ? 1 : 0));
+      // 水鳥
       const duck = mesh(new THREE.SphereGeometry(0.08, 6, 5), mat("#ffffff"), 0, TOP + 0.06, 0);
       g.add(duck);
-      anims.push((t) => duck.position.set(0.6 + Math.cos(t * 0.4) * 0.8, TOP + 0.06, 0.7 + Math.sin(t * 0.4) * 0.5));
-      bench(g, 0.4, -1.0); bench(g, -0.6, 1.6, 1);
-      walker(g, [-1.4, 0.0], [1.6, -1.2], "#d9774b", 0.35);
-      walker(g, [0.0, 2.0], [2.0, 1.0], "#8b6fb0", 0.4, 2);
-      lamp(g, -0.6, -0.5); lamp(g, 1.8, 0.0);
+      anims.push((t) => duck.position.set(0.6 + Math.cos(t * 0.4) * 0.8, TOP + 0.06, 0.6 + Math.sin(t * 0.4) * 0.5));
+      bench(g, -0.4, 1.9); bench(g, 1.9, 0.9, 1);
+      walker(g, [-1.4, 1.5], [1.6, 2.0], "#d9774b", 0.35);
+      walker(g, [-2.0, -0.4], [-0.4, -1.4], "#8b6fb0", 0.4, 2);
+      person(g, 0.6, -0.1, "#5a8f5a");
+      lamp(g, -0.6, -0.6); lamp(g, 1.9, 2.2);
     },
+    // 竹北傳統市場：大棚市場、紅燈籠、街屋招牌
     market(g, c) {
-      building(g, { w: 2.6, h: 0.9, d: 1.1, color: "#f1e2c4", x: 0, z: -1.7, roof: "gable", roofColor: "#c58a5a" });
-      const stripes = [c, "#f2b04c", "#5aa6a0", c, "#e57d6a", "#7d9be0"];
-      let k = 0;
-      for (let row = 0; row < 2; row++) for (let i = 0; i < 3; i++) {
-        const x = -1.5 + i * 1.3, z = 0.0 + row * 1.35;
-        box(g, 0.9, 0.3, 0.5, "#c69a6b", x, TOP, z);            // 攤桌
-        [[-0.42, -0.25], [0.42, -0.25], [-0.42, 0.25], [0.42, 0.25]].forEach(([dx, dz]) => box(g, 0.035, 0.75, 0.035, "#8b8f96", x + dx, TOP, z + dz));
-        const col = stripes[k++ % stripes.length];
-        // 條紋棚頂
-        for (let s = 0; s < 4; s++) {
-          const st = box(g, 0.25, 0.06, 0.66, s % 2 ? "#ffffff" : col, x - 0.375 + s * 0.25, TOP + 0.75, z);
-          st.rotation.x = 0.12;
-        }
-        // 農產品
-        const fruits = ["#e65a4f", "#f2a93b", "#8bc34a", "#f4d35e"];
-        for (let f = 0; f < 4; f++) g.add(mesh(new THREE.SphereGeometry(0.07, 6, 5), mat(fruits[(f + i) % 4]), x - 0.3 + f * 0.2, TOP + 0.36, z));
+      // 市場大棚
+      [[-1.9, -0.5], [1.9, -0.5], [-1.9, 1.3], [1.9, 1.3], [0, -0.5], [0, 1.3]].forEach(([x, z]) => box(g, 0.08, 1.0, 0.08, "#8b8f96", x, TOP, z));
+      gableRoof(g, 2.2, 4.2, 0.55, "#c58a5a", 0, TOP + 1.0, 0.4, Math.PI / 2);
+      box(g, 4.2, 0.06, 2.2, "#a8724a", 0, TOP + 0.96, 0.4);
+      // 棚下攤位
+      const fruits = ["#e65a4f", "#f2a93b", "#8bc34a", "#f4d35e"];
+      for (let i = 0; i < 3; i++) for (let row = 0; row < 2; row++) {
+        const x = -1.3 + i * 1.3, z = -0.05 + row * 0.9;
+        box(g, 0.9, 0.3, 0.45, "#c69a6b", x, TOP, z);
+        for (let f = 0; f < 4; f++) g.add(mesh(new THREE.SphereGeometry(0.07, 6, 5), mat(fruits[(f + i + row) % 4]), x - 0.3 + f * 0.2, TOP + 0.36, z));
       }
-      walker(g, [-2.2, 0.7], [2.0, 0.7], "#4f9da6", 0.35);
-      walker(g, [1.8, 2.3], [-1.8, 2.2], "#e1b54a", 0.3, 1.5);
-      person(g, -1.5, 0.45, "#d9774b"); person(g, 1.1, 1.8, "#8b6fb0");
-      tree(g, 2.6, -0.8, 0.8); tree(g, -2.6, -0.4, 0.8, "#93bf72", 1);
-      lamp(g, 0.0, 2.6);
+      // 紅燈籠
+      const lanternMat = mat("#d6453d", { emissive: "#e0402f", emissiveIntensity: 0.25 });
+      const lanterns = [];
+      for (let i = 0; i < 6; i++) {
+        const lg = new THREE.Group(); lg.position.set(-1.75 + i * 0.7, TOP + 0.93, 1.45);
+        box(lg, 0.01, 0.12, 0.01, "#333", 0, -0.12, 0);
+        const l = mesh(new THREE.SphereGeometry(0.1, 10, 8), lanternMat, 0, -0.2, 0, false); l.scale.y = 1.2; lg.add(l);
+        g.add(lg); lanterns.push(lg);
+      }
+      anims.push((t) => lanterns.forEach((l, i) => (l.rotation.z = Math.sin(t * 1.5 + i) * 0.12)));
+      // 街屋與直立招牌
+      const shops = [[-2.1, "#f1dcc4", "#d6453d"], [-1.15, "#e8eef0", "#3f6b9a"], [-0.2, "#f4e3c8", "#e1b54a"], [0.75, "#efe2d6", "#5a8f5a"]];
+      shops.forEach(([x, col, sign], i) => {
+        building(g, { w: 0.9, h: 1.2 + (i % 2) * 0.35, d: 0.8, color: col, x, z: -2.2, roof: "flat", roofColor: "#b9b2a2" });
+        box(g, 0.12, 0.7, 0.05, sign, x + 0.35, TOP + 0.5, -1.75);
+        box(g, 0.92, 0.06, 0.3, sign, x, TOP + 0.45, -1.7);
+      });
+      // 停放的機車
+      for (let i = 0; i < 4; i++) {
+        const m = new THREE.Group();
+        box(m, 0.32, 0.12, 0.1, ["#e57d6a", "#ffffff", "#7d9be0", "#e1b54a"][i], 0, 0.08, 0);
+        wheels(m, [[-0.12, 0], [0.12, 0]], 0.06);
+        m.position.set(1.5 + i * 0.25, TOP, -1.6); m.rotation.y = Math.PI / 2; g.add(m);
+      }
+      walker(g, [-2.2, 1.9], [2.0, 1.9], "#4f9da6", 0.35);
+      walker(g, [1.6, -1.2], [-1.6, -1.1], "#e1b54a", 0.3, 1.5);
+      person(g, -1.3, 0.3, "#d9774b"); person(g, 1.3, 1.15, "#8b6fb0");
+      tree(g, 2.7, 0.6, 0.8); tree(g, -2.8, 0.7, 0.75, "#93bf72", 1); tree(g, 1.0, 2.6, 0.7);
+      lamp(g, 2.4, -0.8);
     },
+    // 新瓦屋客家文化保存區：忠孝堂夥房、禾埕、半月池、水稻田、木棧舞台
     culture(g, c) {
-      // 圖書館（列柱）
-      building(g, { w: 2.0, h: 1.05, d: 1.3, color: "#f4ecdc", x: -0.9, z: -1.2, roof: "flat", roofColor: c });
-      for (let i = 0; i < 5; i++) g.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.95, 8), mat("#ffffff"), -1.7 + i * 0.4, TOP + 0.475, -0.42));
-      box(g, 2.1, 0.1, 0.4, "#ffffff", -0.9, TOP + 0.95, -0.4);
-      // 書本意象
-      const books = ["#d9774b", "#4f9da6", "#e1b54a", c];
-      books.forEach((col, i) => {
-        const b = box(g, 0.14, 0.5, 0.36, col, 1.1 + i * 0.16, TOP, -1.8);
-        b.rotation.z = i === 3 ? -0.25 : 0;
+      const wall = "#f5efe4", tile = "#b5523b";
+      // 正身（忠孝堂）與左右護龍
+      building(g, { w: 0.95, h: 0.8, d: 2.4, color: wall, x: 0, z: -1.5, rot: Math.PI / 2, roof: "gable", roofColor: tile, win: false });
+      box(g, 0.5, 0.55, 0.03, "#8a4b32", 0, TOP, -1.01);
+      [-1.35, 1.35].forEach((x) => {
+        building(g, { w: 0.75, h: 0.6, d: 2.0, color: wall, x, z: -0.3, roof: "gable", roofColor: tile, win: false });
+        for (let i = 0; i < 3; i++) box(g, 0.03, 0.18, 0.16, "#5a4a3a", x - Math.sign(x) * 0.39, TOP + 0.25, -0.9 + i * 0.6);
       });
-      // 運動場
-      box(g, 2.6, 0.03, 1.6, "#7cbf63", 0.6, TOP, 1.2);
-      box(g, 0.03, 0.035, 1.5, "#ffffff", 0.6, TOP, 1.2);
-      const cc = mesh(new THREE.RingGeometry(0.28, 0.32, 20), mat("#ffffff", { side: THREE.DoubleSide }), 0.6, TOP + 0.04, 1.2, false);
-      cc.rotation.x = -Math.PI / 2; g.add(cc);
-      [-0.65, 1.85].forEach((x) => {
-        box(g, 0.04, 0.3, 0.04, "#ffffff", x, TOP, 0.95); box(g, 0.04, 0.3, 0.04, "#ffffff", x, TOP, 1.45);
-        box(g, 0.04, 0.04, 0.54, "#ffffff", x, TOP + 0.3, 1.2);
+      // 禾埕與半月池
+      decal(g, new THREE.PlaneGeometry(2.0, 1.7), "#e3d2b0", 0, -0.2);
+      decal(g, new THREE.CircleGeometry(0.85, 20, 0, Math.PI), "#7cc6cf", 0, 1.35, 0.014, { roughness: 0.2 });
+      // 屋後風水林
+      [[-1.6, -2.4], [-0.6, -2.7], [0.5, -2.7], [1.5, -2.4]].forEach(([x, z], i) => tree(g, x, z, 0.85, i % 2 ? "#6fa361" : "#7fb069", i % 2));
+      // 水稻田
+      [[-2.5, 1.1], [-2.5, 2.0]].forEach(([x, z]) => {
+        decal(g, new THREE.PlaneGeometry(1.1, 0.8), "#9ccf6a", x, z);
+        for (let k = 0; k < 5; k++) decal(g, new THREE.PlaneGeometry(0.03, 0.8), "#7fb055", x - 0.44 + k * 0.22, z, 0.014);
       });
-      const ball = mesh(new THREE.IcosahedronGeometry(0.06, 0), mat("#ffffff"), 0.6, TOP + 0.08, 1.2);
-      g.add(ball);
-      anims.push((t) => ball.position.set(0.6 + Math.sin(t * 0.9) * 1.0, TOP + 0.08 + Math.abs(Math.sin(t * 2.7)) * 0.15, 1.2 + Math.sin(t * 1.7) * 0.4));
-      walker(g, [-0.3, 0.8], [1.5, 1.6], "#d9774b", 0.9);
-      walker(g, [1.5, 0.7], [-0.2, 1.6], "#4f9da6", 0.8, 1);
-      person(g, -0.8, -0.1, "#8b6fb0");
-      tree(g, -2.4, 0.6, 0.85); tree(g, 2.5, -0.8, 0.8, "#6fa361", 1); tree(g, -1.8, 2.3, 0.75, "#93bf72");
-      lamp(g, 2.2, 0.2);
+      // 木棧舞台
+      box(g, 1.2, 0.14, 0.8, "#b9875c", 2.2, TOP, 1.4);
+      box(g, 0.05, 0.8, 0.05, "#8a6a4a", 1.65, TOP, 1.05); box(g, 0.05, 0.8, 0.05, "#8a6a4a", 2.75, TOP, 1.05);
+      box(g, 1.2, 0.12, 0.05, c, 2.2, TOP + 0.8, 1.05);
+      person(g, 2.2, 1.4, "#e1b54a").position.y = TOP + 0.14;
+      // 書車（巡迴閱讀）
+      box(g, 0.5, 0.35, 0.3, "#b9875c", -0.9, TOP + 0.1, 2.3);
+      ["#d9774b", "#4f9da6", "#e1b54a", c].forEach((col, i) => box(g, 0.08, 0.2, 0.22, col, -1.05 + i * 0.1, TOP + 0.45, 2.3));
+      wheels(g, [[-1.05, 2.45], [-0.75, 2.45]], 0.07);
+      walker(g, [-0.6, 0.5], [0.8, -0.6], "#3f4f7a", 0.4);
+      walker(g, [0.8, 2.4], [1.6, 0.4], "#d9774b", 0.45, 1);
+      person(g, -0.4, 2.1, "#4f9da6"); person(g, 2.6, 2.1, "#8b6fb0");
+      lamp(g, 0.9, 0.6); lamp(g, -0.9, 0.6);
     },
+    // 新月沙灣：新月形海灣、沙灘、週末市集
     youth(g, c) {
-      // 貨櫃工作室
-      const cols = ["#e8a33d", "#4f9da6", c, "#e57d6a", "#7d9be0"];
-      const cont = [[-1.2, 0, -1.2, 0], [-1.2, 0, -0.55, 1], [-1.2, 1, -0.9, 2], [0.4, 0, -1.6, 3], [0.4, 1, -1.6, 4]];
-      cont.forEach(([x, lvl, z, ci]) => {
-        const m = rbox(1.4, 0.55, 0.6, cols[ci], 0.04);
-        m.position.set(x, TOP + 0.275 + lvl * 0.57, z); m.castShadow = m.receiveShadow = true; g.add(m);
-        for (let r = 0; r < 6; r++) box(g, 0.03, 0.47, 0.62, cols[ci], x - 0.6 + r * 0.24, TOP + 0.04 + lvl * 0.57, z);
-        const wm = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.26), windowMat);
-        wm.position.set(x + 0.2, TOP + 0.3 + lvl * 0.57, z + 0.31); wm.userData.isWindow = true; g.add(wm);
+      // 沙灘（島的西半部）與新月形海灣
+      decal(g, new THREE.CircleGeometry(3.25, 28, Math.PI / 2, Math.PI), "#efd9a7", 0.3, 0);
+      const bay = new THREE.Shape();
+      bay.absellipse(0, 0, 3.25, 3.25, Math.PI / 2, Math.PI * 1.5, false);
+      bay.absellipse(0, 0, 1.9, 3.25, Math.PI * 1.5, Math.PI / 2, true);
+      decal(g, new THREE.ShapeGeometry(bay, 24), "#8fd3d6", 0.3, 0, 0.016, { roughness: 0.2 });
+      // 浪花
+      const waves = [0, 1, 2].map((i) => {
+        const w = mesh(new THREE.TorusGeometry(2.0 + i * 0.35, 0.02, 4, 24, Math.PI * 0.7), track(new THREE.MeshStandardMaterial({ color: "#ffffff", transparent: true, opacity: 0.8 })), 0.3, TOP + 0.03, 0, false);
+        w.rotation.set(-Math.PI / 2, 0, Math.PI * 0.65); g.add(w); return w;
       });
-      // 玻璃共享辦公室
-      const glass = rbox(1.2, 1.0, 1.0, "#bfe3ee", 0.05);
-      glass.material = mat("#bfe3ee", { transparent: true, opacity: 0.55, roughness: 0.1 });
-      glass.position.set(1.6, TOP + 0.5, 0.5); g.add(glass);
-      box(g, 1.26, 0.06, 1.06, "#ffffff", 1.6, TOP + 1.0, 0.5);
-      box(g, 0.5, 0.28, 0.3, "#f2f2f2", 1.6, TOP, 0.5);
-      // 霓虹燈泡
-      const bulb = mesh(new THREE.IcosahedronGeometry(0.22, 1), neonMat2, 1.6, TOP + 1.45, 0.5, false);
-      g.add(bulb);
-      anims.push((t) => (bulb.rotation.y = t * 0.8));
-      // 塗鴉牆
-      const wall = box(g, 1.6, 0.6, 0.08, "#f6efe3", -1.0, TOP, 1.4);
-      ["#e57d6a", "#4f9da6", "#e1b54a", c].forEach((col, i) => box(g, 0.3, 0.3, 0.02, col, -1.55 + i * 0.37, TOP + 0.15, 1.45));
-      // 小舞台 + 人
-      box(g, 0.9, 0.12, 0.7, "#c69a6b", 0.5, TOP, 1.8);
-      person(g, 0.5, 1.8, "#e1b54a").position.y = TOP + 0.12;
-      walker(g, [-2.0, 0.4], [0.8, 0.4], "#8b6fb0", 0.6);
-      walker(g, [2.2, -1.2], [0.8, -0.4], "#d9774b", 0.5, 2);
-      tree(g, 2.5, -1.6, 0.8, "#93bf72"); tree(g, -2.6, 0.8, 0.8, "#6fa361", 1);
-      lamp(g, -0.2, 0.2);
+      anims.push((t) => waves.forEach((w, i) => (w.material.opacity = 0.35 + 0.35 * Math.sin(t * 1.2 + i * 2))));
+      // 海邊風機
+      [[-2.6, -1.6], [-2.8, 1.4]].forEach(([x, z], k) => {
+        box(g, 0.07, 2.2, 0.07, "#f2f2f2", x, TOP, z);
+        const rotor = new THREE.Group(); rotor.position.set(x + 0.06, TOP + 2.2, z); rotor.rotation.y = Math.PI / 2;
+        for (let i = 0; i < 3; i++) {
+          const holder = new THREE.Group(); holder.rotation.z = (i * Math.PI * 2) / 3;
+          holder.add(mesh(new THREE.BoxGeometry(0.07, 0.7, 0.02), mat("#ffffff"), 0, 0.35, 0)); rotor.add(holder);
+        }
+        g.add(rotor);
+        anims.push((t, dt) => (rotor.rotation.z -= dt * (1.5 + k * 0.4)));
+      });
+      // 海灘陽傘、衝浪板、救生員台
+      [[-1.0, -1.2, c], [-0.8, 0.9, "#4f9da6"], [-1.3, 2.0, "#e1b54a"]].forEach(([x, z, col]) => {
+        box(g, 0.03, 0.7, 0.03, "#ffffff", x, TOP, z);
+        g.add(mesh(new THREE.ConeGeometry(0.42, 0.22, 8), mat(col), x, TOP + 0.78, z));
+      });
+      [["#e57d6a", -0.2], ["#7d9be0", 0.1]].forEach(([col, dx]) => {
+        const b = mesh(new THREE.CapsuleGeometry(0.07, 0.5, 3, 8), mat(col), -0.4 + dx, TOP + 0.33, -0.3);
+        b.rotation.x = 0.2; b.scale.z = 0.4; g.add(b);
+      });
+      [[-0.15, -2.45], [0.35, -2.45], [-0.15, -1.95], [0.35, -1.95]].forEach(([x, z]) => box(g, 0.04, 0.7, 0.04, "#ffffff", x, TOP, z));
+      box(g, 0.6, 0.06, 0.6, "#ffffff", 0.1, TOP + 0.7, -2.2);
+      box(g, 0.6, 0.06, 0.6, "#d6453d", 0.1, TOP + 1.12, -2.2);
+      box(g, 0.03, 0.36, 0.03, "#ffffff", -0.15, TOP + 0.76, -2.45); box(g, 0.03, 0.36, 0.03, "#ffffff", 0.35, TOP + 0.76, -1.95);
+      // 濱海木平台
+      box(g, 1.3, 0.1, 1.0, "#c69a6b", 1.9, TOP, -1.2);
+      building(g, { w: 0.9, h: 0.7, d: 0.6, color: "#f6f2ea", x: 2.0, z: -1.45, roof: "flat", roofColor: c });
+      // 週末市集帳篷
+      [[1.1, 0.5], [2.0, 0.5], [1.55, 1.5], [2.45, 1.5]].forEach(([x, z], i) => {
+        [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]].forEach(([dx, dz]) => box(g, 0.03, 0.45, 0.03, "#d0d0d0", x + dx, TOP, z + dz));
+        const roof = mesh(new THREE.ConeGeometry(0.42, 0.3, 4), mat(i % 2 ? "#ffffff" : "#f6efe3"), x, TOP + 0.6, z);
+        roof.rotation.y = Math.PI / 4; g.add(roof);
+        box(g, 0.45, 0.22, 0.25, ["#e57d6a", "#4f9da6", "#e1b54a", "#8b6fb0"][i], x, TOP, z);
+      });
+      walker(g, [0.8, 2.2], [2.6, 0.0], "#8b6fb0", 0.4);
+      walker(g, [-1.5, -0.6], [-0.6, 1.6], "#d9774b", 0.35, 2);
+      person(g, 1.3, 1.0, "#e1b54a"); person(g, 1.8, -0.9, "#5a8f5a");
+      tree(g, 2.7, -0.3, 0.75, "#6fa361", 1); tree(g, 1.0, 2.6, 0.7, "#93bf72");
+      lamp(g, 0.6, -0.6);
     },
   };
   function genericBuilder(g, c) {

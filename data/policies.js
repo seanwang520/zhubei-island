@@ -31,6 +31,7 @@ export default {
   themes: [
     {
       id: "care",
+      landmark: "台大醫院新竹分院生醫醫院（竹北院區）",
       no: 1,
       title: "全齡照顧",
       icon: "🏠",
@@ -49,6 +50,7 @@ export default {
     },
     {
       id: "service",
+      landmark: "竹北市公所",
       no: 2,
       title: "城市生活支持服務",
       icon: "🤝",
@@ -66,6 +68,7 @@ export default {
     },
     {
       id: "edu",
+      landmark: "竹北市立圖書館福德分館",
       no: 3,
       title: "安心教育",
       icon: "🎒",
@@ -83,6 +86,7 @@ export default {
     },
     {
       id: "traffic",
+      landmark: "高鐵新竹站、光明地下道",
       no: 4,
       title: "人本交通",
       icon: "🚲",
@@ -101,6 +105,7 @@ export default {
     },
     {
       id: "resilience",
+      landmark: "頭前溪河濱",
       no: 5,
       title: "城市韌性",
       icon: "🛡️",
@@ -118,6 +123,7 @@ export default {
     },
     {
       id: "digital",
+      landmark: "台元科技園區",
       no: 6,
       title: "竹北數位孿生／智慧市政",
       icon: "🛰️",
@@ -134,6 +140,7 @@ export default {
     },
     {
       id: "space",
+      landmark: "竹北水圳森林公園",
       no: 7,
       title: "公有空間活化",
       icon: "🌳",
@@ -152,6 +159,7 @@ export default {
     },
     {
       id: "market",
+      landmark: "竹北傳統市場",
       no: 8,
       title: "市場與商圈共榮",
       icon: "🏮",
@@ -169,6 +177,7 @@ export default {
     },
     {
       id: "culture",
+      landmark: "新瓦屋客家文化保存區",
       no: 9,
       title: "文化運動閱讀巡迴31里",
       icon: "📚",
@@ -186,6 +195,7 @@ export default {
     },
     {
       id: "youth",
+      landmark: "新月沙灣",
       no: 10,
       title: "青年",
       icon: "🌱",

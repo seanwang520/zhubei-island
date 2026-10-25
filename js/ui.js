@@ -434,6 +434,7 @@ export function createUI(root, data, callbacks = {}) {
       h('div', { class: 'zb-detail-titlerow' },
         h('span', { class: 'zb-detail-ico', 'aria-hidden': 'true', text: t.icon || '🏝️' }),
         h('h2', { class: 'zb-detail-title', text: t.title })),
+      t.landmark ? h('p', { class: 'zb-detail-landmark' }, h('span', { class: 'zb-mono', text: '島上地標' }), t.landmark) : null,
       t.summary ? h('p', { class: 'zb-detail-summary', text: t.summary }) : null,
       t.quote ? h('blockquote', { class: 'zb-quote', text: `「${String(t.quote).replace(/^「|」$/g, '')}」` }) : null,
       h('div', { class: 'zb-tags' },
