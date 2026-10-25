@@ -97,32 +97,58 @@ export function createAmbience() {
     return true;
   }
 
-  // 五色鳥：低沉、空心的「嘓、嘓、嘓」，像敲木魚，一串十幾聲、節奏單調
+  // 五色鳥（臺灣擬啄木）：低沉、單調、響亮，像敲木魚；帶一點青蛙般的沸騰感。
+  // 兩種唱法：穩定的「嘓、嘓、嘓…」，或成組的「tokarato tokarato…」
+  function barbetNote(t, f, vol, pan) {
+    // 空心的木魚音：基音 + 少量二倍頻，起音後音高微降
+    const o = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o.type = "sine";
+    o2.type = "sine";
+    o.frequency.setValueAtTime(f * 1.08, t);
+    o.frequency.exponentialRampToValueAtTime(f, t + 0.04);
+    o2.frequency.setValueAtTime(f * 2.1, t);
+    o2.frequency.exponentialRampToValueAtTime(f * 2, t + 0.04);
+    // 沸騰感：每個音裡 ~35Hz 的快速顫動
+    const flutter = ctx.createOscillator();
+    flutter.frequency.value = 32 + Math.random() * 8;
+    const fd = ctx.createGain();
+    fd.gain.value = 0.35;
+    const trem = ctx.createGain();
+    trem.gain.value = 0.65;
+    flutter.connect(fd).connect(trem.gain);
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.18;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+    env.gain.setValueAtTime(vol, t + 0.05);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
+    o.connect(trem);
+    o2.connect(g2).connect(trem);
+    trem.connect(env).connect(pan);
+    [o, o2, flutter].forEach((n) => { n.start(t); n.stop(t + 0.22); });
+  }
   function barbet() {
     const t0 = ctx.currentTime + 0.05;
-    const n = 10 + Math.floor(Math.random() * 14);
-    const f = 560 + Math.random() * 120;
-    const gap = 0.3 + Math.random() * 0.08;
+    const f = 500 + Math.random() * 90;
     const pan = panner((Math.random() - 0.5) * 1.2);
-    for (let i = 0; i < n; i++) {
-      // 偶爾連敲兩下（嘓嘓）
-      const t = t0 + i * gap + (i % 5 === 4 ? -gap * 0.45 : 0);
-      [1, 2.02].forEach((h, k) => {
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = "sine";
-        o.frequency.setValueAtTime(f * h * 1.06, t);
-        o.frequency.exponentialRampToValueAtTime(f * h, t + 0.05);
-        const v = (k ? 0.03 : 0.16) * (0.85 + Math.random() * 0.3);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(v, t + 0.012);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-        o.connect(g).connect(pan);
-        o.start(t);
-        o.stop(t + 0.18);
-      });
+    const vol = 0.17;
+    let t = t0;
+    if (Math.random() < 0.5) {
+      // 嘓、嘓、嘓：等距、單調，一串 20～40 聲
+      const n = 20 + Math.floor(Math.random() * 20);
+      const gap = 0.28 + Math.random() * 0.06;
+      for (let i = 0; i < n; i++, t += gap * (0.97 + Math.random() * 0.06)) barbetNote(t, f, vol * (0.9 + Math.random() * 0.2), pan);
+    } else {
+      // tokarato：to（低）ka（高）ra（中）to（低），間隔不等，整組重複
+      const motif = [[1, 0.15], [1.12, 0.12], [1.05, 0.13], [1, 0.36]];
+      const reps = 6 + Math.floor(Math.random() * 8);
+      for (let r = 0; r < reps; r++) {
+        motif.forEach(([p, dt]) => { barbetNote(t, f * p, vol * (0.9 + Math.random() * 0.2), pan); t += dt; });
+      }
     }
-    return n * gap;
+    return t - t0;
   }
 
   // 蟬：帶通噪音再用快速脈衝調變，做出「沙沙的嗡鳴」
@@ -176,7 +202,7 @@ export function createAmbience() {
 
   // 依時段排程：清晨、白天五色鳥；蟲鳴只有草蟬，白天到夜晚都有，夜晚較疏
   const VOICES = [
-    { play: barbet, when: ["dawn", "day"], rest: [3, 9] },
+    { play: barbet, when: ["dawn", "day"], rest: [1.5, 5] },
     { play: grassCicada, when: ["dawn", "day", "dusk", "night"], rest: [2, 6], nightRest: [8, 20] },
   ];
   const voiceTimers = [];
