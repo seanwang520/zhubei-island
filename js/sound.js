@@ -1,5 +1,5 @@
 // 竹北政策島 — 環境音效（Web Audio 即時合成，不載入音檔）
-// 海浪聲一直都在；白天、清晨有鳥叫，黃昏、夜晚換成蟲鳴。
+// 海浪一道一道湧上岸；白天、清晨有鳥叫，黃昏、夜晚換成蟲鳴。
 // export createAmbience() → { setOn(on), setTime(t) }
 
 export function createAmbience() {
@@ -8,6 +8,71 @@ export function createAmbience() {
   let on = false;
   let time = "day";
   let timer = null;
+  let waveTimer = null;
+  let white = null;
+
+  // 噪音緩衝：白噪音，或積分成棕噪音（聽起來比較厚、比較遠）
+  function noiseBuffer(brown) {
+    const len = ctx.sampleRate * 4;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      if (brown) { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
+      else d[i] = w;
+    }
+    return buf;
+  }
+
+  // 一道浪：湧起（濾波器漸開、音量漸強）→ 拍岸 → 泡沫退去（高頻沙沙聲慢慢消失）
+  function wave() {
+    const t = ctx.currentTime + 0.05;
+    const rise = 1.6 + Math.random() * 1.2;
+    const fall = 3.5 + Math.random() * 2.5;
+    const peak = 0.45 + Math.random() * 0.3;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) { pan.pan.value = (Math.random() - 0.5) * 0.8; pan.connect(master); }
+    const out = pan || master;
+
+    // 主體：低通噪音，截止頻率隨浪湧起而打開、退去時關上
+    const body = ctx.createBufferSource();
+    body.buffer = white;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(250, t);
+    lp.frequency.exponentialRampToValueAtTime(1800 + Math.random() * 900, t + rise);
+    lp.frequency.exponentialRampToValueAtTime(350, t + rise + fall);
+    const bg = ctx.createGain();
+    bg.gain.setValueAtTime(0.0001, t);
+    bg.gain.exponentialRampToValueAtTime(peak, t + rise);
+    bg.gain.exponentialRampToValueAtTime(0.0001, t + rise + fall);
+    body.connect(lp).connect(bg).connect(out);
+
+    // 泡沫：高通的沙沙聲，拍岸後才出現、退得比較慢
+    const foam = ctx.createBufferSource();
+    foam.buffer = white;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 2500;
+    const fg = ctx.createGain();
+    fg.gain.setValueAtTime(0.0001, t);
+    fg.gain.setValueAtTime(0.0001, t + rise * 0.8);
+    fg.gain.exponentialRampToValueAtTime(peak * 0.22, t + rise + 0.25);
+    fg.gain.exponentialRampToValueAtTime(0.0001, t + rise + fall * 1.2);
+    foam.connect(hp).connect(fg).connect(out);
+
+    const end = t + rise + fall * 1.2 + 0.1;
+    [body, foam].forEach((src) => { src.start(t, Math.random() * 3); src.stop(end); });
+  }
+
+  function scheduleWaves() {
+    clearTimeout(waveTimer);
+    if (!on) return;
+    wave();
+    waveTimer = setTimeout(scheduleWaves, 4500 + Math.random() * 4000);
+  }
 
   function init() {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -17,27 +82,19 @@ export function createAmbience() {
     master.gain.value = 0;
     master.connect(ctx.destination);
 
-    // 海浪：低通白噪音，音量隨慢速 LFO 起伏
-    const len = ctx.sampleRate * 2;
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    const noise = ctx.createBufferSource();
-    noise.buffer = buf;
-    noise.loop = true;
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 420;
-    const wave = ctx.createGain();
-    wave.gain.value = 0.16;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.11;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.11;
-    lfo.connect(lfoGain).connect(wave.gain);
-    noise.connect(lp).connect(wave).connect(master);
-    noise.start();
-    lfo.start();
+    // 遠方浪底：棕噪音（低頻多）過低通，持續的隆隆聲
+    white = noiseBuffer(false);
+    const brown = noiseBuffer(true);
+    const bed = ctx.createBufferSource();
+    bed.buffer = brown;
+    bed.loop = true;
+    const bedLp = ctx.createBiquadFilter();
+    bedLp.type = "lowpass";
+    bedLp.frequency.value = 380;
+    const bedGain = ctx.createGain();
+    bedGain.gain.value = 0.22;
+    bed.connect(bedLp).connect(bedGain).connect(master);
+    bed.start();
     return true;
   }
 
@@ -99,6 +156,7 @@ export function createAmbience() {
     master.gain.cancelScheduledValues(ctx.currentTime);
     master.gain.setTargetAtTime(on ? 0.9 : 0, ctx.currentTime, 0.4);
     schedule();
+    scheduleWaves();
     return on;
   }
 
