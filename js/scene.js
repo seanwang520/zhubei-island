@@ -1103,6 +1103,55 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     tree(g, -1.8, 1, 0.9); tree(g, 1.8, -1, 0.9);
   }
 
+  /* ---------- 外環道路與入口 ---------- */
+  const CONTENT_SCALE = 0.84; // 島上造型縮進外環道路內側
+  const RING_OUT = 0.93, RING_IN = 0.79, RING_N = 192;
+  const ENTRY_ANGLE = Math.atan2(0.85, -0.52); // 入口朝西南，正對預設鏡頭
+  // 圓角六角形輪廓上的點（島嶼本地座標 [x, z]）
+  const hexPts = (R, n = RING_N) => roundedHexShape(R, R * 0.28).getSpacedPoints(n).slice(0, n).map((v) => [v.x, -v.y]);
+  // 輪廓上最接近某個方位角的點
+  const angIdx = (pts, cx, cz, ang) => {
+    let best = 0, bd = Infinity;
+    pts.forEach(([x, z], i) => {
+      let d = Math.abs(Math.atan2(z - cz, x - cx) - ang);
+      d = Math.min(d, Math.PI * 2 - d);
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  };
+  const dashMat = mat("#ffffff");
+  function buildRingRoad(g, r, color) {
+    const outer = roundedHexShape(r * RING_OUT, r * RING_OUT * 0.28);
+    outer.holes.push(new THREE.Path(roundedHexShape(r * RING_IN, r * RING_IN * 0.28).getPoints(8)));
+    decal(g, new THREE.ShapeGeometry(outer, 8), "#a7a299", 0, 0, 0.014);
+    // 中線虛線
+    const mid = hexPts(r * (RING_OUT + RING_IN) / 2);
+    const n = RING_N / 4;
+    const dashes = new THREE.InstancedMesh(track(new THREE.BoxGeometry(0.2, 0.01, 0.035)), dashMat, n);
+    const d = new THREE.Object3D();
+    for (let k = 0; k < n; k++) {
+      const [x, z] = mid[k * 4], [x2, z2] = mid[k * 4 + 1];
+      d.position.set(x, TOP + 0.022, z);
+      d.rotation.y = -Math.atan2(z2 - z, x2 - x);
+      d.updateMatrix();
+      dashes.setMatrixAt(k, d.matrix);
+    }
+    dashes.receiveShadow = true;
+    g.add(dashes);
+    // 入口：外環道路內側的門
+    const entry = angIdx(mid, 0, 0, ENTRY_ANGLE);
+    const [ex, ez] = mid[entry], [nx, nz] = mid[(entry + 1) % RING_N];
+    const k = (RING_IN - 0.01) / ((RING_OUT + RING_IN) / 2);
+    const gate = new THREE.Group();
+    gate.position.set(ex * k, TOP, ez * k);
+    gate.rotation.y = -Math.atan2(nz - ez, nx - ex);
+    box(gate, 0.07, 0.75, 0.07, color, -0.38, 0, 0); box(gate, 0.07, 0.75, 0.07, color, 0.38, 0, 0);
+    box(gate, 0.9, 0.12, 0.1, color, 0, 0.72, 0);
+    box(gate, 0.5, 0.05, 0.11, "#ffffff", 0, 0.755, 0);
+    g.add(gate);
+    return { mid, entry };
+  }
+
   /* ---------- 建立島嶼 ---------- */
   const islandsRoot = new THREE.Group();
   scene.add(islandsRoot);
@@ -1128,9 +1177,14 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     top.material = landMat;
     top.position.y = 0.04; top.receiveShadow = true; g.add(top);
     // 主題造型
+    const content = new THREE.Group();
+    content.scale.setScalar(CONTENT_SCALE);
+    content.position.y = TOP * (1 - CONTENT_SCALE);
+    g.add(content);
     roleCtx = theme.id;
-    (BUILDERS[theme.id] || genericBuilder)(g, color);
+    (BUILDERS[theme.id] || genericBuilder)(content, color);
     roleCtx = null;
+    const ring = buildRingRoad(g, L.r, color);
     // 合併窗戶
     g.updateMatrixWorld(true);
     const winGeos = [], toRemove = [];
@@ -1173,7 +1227,10 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     g.position.set(L.x, 0, L.z);
     g.userData.themeId = theme.id;
     islandsRoot.add(g);
-    islands.set(theme.id, { group: g, theme, label, el, band, bandMat, r: L.r, lift: 0, liftTarget: 0, anchorY: label.position.y });
+    islands.set(theme.id, {
+      group: g, theme, label, el, band, bandMat, r: L.r, lift: 0, liftTarget: 0, anchorY: label.position.y,
+      ring: ring.mid.map(([x, z]) => [x + L.x, z + L.z]), entry: ring.entry, edge: hexPts(L.r),
+    });
   });
 
   /* ---------- 地景：海岸、河流、丘陵、風機 ---------- */
@@ -1336,7 +1393,114 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     });
   }
 
-  /* ---------- 協作路線：沿著小人實際走的地面與木棧道 ---------- */
+  /* ---------- 木棧道：只連相鄰的島，一對島一座橋，彼此不交錯 ---------- */
+  const BRIDGES = [
+    ["youth", "market"], ["market", "resilience"], ["resilience", "digital"],
+    ["space", "care"], ["care", "service"], ["service", "traffic"], ["culture", "edu"],
+    ["youth", "space"], ["market", "care"], ["digital", "traffic"],
+    ["space", "culture"], ["care", "edu"], ["service", "edu"],
+  ];
+  const BRIDGE_Y = TOP - 0.01; // 橋面與島面同高
+  const adj = new Map(); // id -> [{ to, head, a, b }]：head 是外環上的橋頭，a→b 是橋面兩端
+  {
+    const pairs = BRIDGES.filter(([a, b]) => islands.has(a) && islands.has(b));
+    // 不在版面表裡的島，接到最近的島
+    islands.forEach((isl, id) => {
+      if (pairs.some((p) => p.includes(id))) return;
+      let near = null, nd = Infinity;
+      islands.forEach((o, k) => {
+        const d = o.group.position.distanceTo(isl.group.position);
+        if (k !== id && d < nd) { nd = d; near = k; }
+      });
+      if (near) pairs.push([id, near]);
+    });
+    const edgeAt = (isl, ang) => {
+      const [x, z] = isl.edge[angIdx(isl.edge, 0, 0, ang)];
+      return [x + isl.group.position.x, z + isl.group.position.z];
+    };
+    pairs.forEach(([a, b]) => {
+      const A = islands.get(a), B = islands.get(b);
+      const pa = A.group.position, pb = B.group.position;
+      const ang = Math.atan2(pb.z - pa.z, pb.x - pa.x);
+      const ea = edgeAt(A, ang), eb = edgeAt(B, ang + Math.PI);
+      if (!adj.has(a)) adj.set(a, []);
+      if (!adj.has(b)) adj.set(b, []);
+      adj.get(a).push({ to: b, head: angIdx(A.ring, pa.x, pa.z, ang), a: ea, b: eb, w: pa.distanceTo(pb) });
+      adj.get(b).push({ to: a, head: angIdx(B.ring, pb.x, pb.z, ang + Math.PI), a: eb, b: ea, w: pa.distanceTo(pb) });
+      // 橋面兩端各伸進島緣下方一點，欄杆只蓋在水面那段
+      const dx = eb[0] - ea[0], dz = eb[1] - ea[1];
+      const len = Math.hypot(dx, dz);
+      const bridge = new THREE.Group();
+      bridge.position.set((ea[0] + eb[0]) / 2, 0, (ea[1] + eb[1]) / 2);
+      bridge.rotation.y = -Math.atan2(dz, dx);
+      box(bridge, len + 0.6, 0.08, 0.8, "#c9a47c", 0, BRIDGE_Y - 0.08, 0);
+      box(bridge, len, 0.04, 0.05, "#a9825c", 0, BRIDGE_Y + 0.16, 0.38);
+      box(bridge, len, 0.04, 0.05, "#a9825c", 0, BRIDGE_Y + 0.16, -0.38);
+      const posts = Math.max(2, Math.round(len / 0.7) + 1);
+      for (let i = 0; i < posts; i++) {
+        const sx = -len / 2 + (i * len) / (posts - 1);
+        box(bridge, 0.05, 0.18, 0.05, "#a9825c", sx, BRIDGE_Y, 0.38);
+        box(bridge, 0.05, 0.18, 0.05, "#a9825c", sx, BRIDGE_Y, -0.38);
+      }
+      for (let i = 1; i < posts - 1; i += 2) box(bridge, 0.12, BRIDGE_Y + 0.17, 0.12, "#8a6a4c", -len / 2 + (i * len) / (posts - 1), -0.25, 0);
+      scene.add(bridge);
+    });
+  }
+  // 外環上 i0 → i1 走較短的方向
+  function ringArc(isl, i0, i1) {
+    const fwd = (i1 - i0 + RING_N) % RING_N;
+    const step = fwd <= RING_N / 2 ? 1 : -1, n = step > 0 ? fwd : RING_N - fwd;
+    const out = [];
+    for (let k = 0; k <= n; k++) out.push(isl.ring[(i0 + step * k + RING_N) % RING_N]);
+    return out;
+  }
+  // 從 A 島入口走到 B 島入口：外環道路 → 橋 → 外環道路…，不穿過島中央
+  function walkRoute(fromId, toId) {
+    const dist = new Map([[fromId, 0]]), prev = new Map(), todo = new Set(islands.keys());
+    while (todo.size) {
+      let u = null;
+      todo.forEach((k) => { if (dist.has(k) && (u === null || dist.get(k) < dist.get(u))) u = k; });
+      if (u === null || u === toId) break;
+      todo.delete(u);
+      (adj.get(u) || []).forEach((e) => {
+        const d = dist.get(u) + e.w;
+        if (!dist.has(e.to) || d < dist.get(e.to)) { dist.set(e.to, d); prev.set(e.to, { from: u, e }); }
+      });
+    }
+    if (!dist.has(toId)) return null;
+    const hops = [];
+    for (let k = toId; k !== fromId; k = prev.get(k).from) hops.unshift(prev.get(k));
+    let isl = islands.get(fromId), cur = isl.entry;
+    const pts = [];
+    hops.forEach(({ from, e }) => {
+      pts.push(...ringArc(isl, cur, e.head), e.a, e.b);
+      isl = islands.get(e.to);
+      cur = adj.get(e.to).find((r) => r.to === from).head;
+    });
+    pts.push(...ringArc(isl, cur, isl.entry));
+    // 去掉重複點，算累積長度
+    const P = [pts[0]], cum = [0];
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, z0] = P[P.length - 1], [x1, z1] = pts[i];
+      const d = Math.hypot(x1 - x0, z1 - z0);
+      if (d < 1e-4) continue;
+      P.push(pts[i]); cum.push(cum[cum.length - 1] + d);
+    }
+    return { pts: P, cum, len: cum[cum.length - 1] };
+  }
+  // 路線上距離 s 的位置與前進方向
+  function routeAt(R, s, out = {}) {
+    s = Math.max(0, Math.min(R.len, s));
+    let lo = 0, hi = R.cum.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (R.cum[m] <= s) lo = m; else hi = m; }
+    const [x0, z0] = R.pts[lo], [x1, z1] = R.pts[hi];
+    const seg = R.cum[hi] - R.cum[lo] || 1, k = (s - R.cum[lo]) / seg;
+    out.x = lerp(x0, x1, k); out.z = lerp(z0, z1, k);
+    out.dx = (x1 - x0) / seg; out.dz = (z1 - z0) / seg;
+    return out;
+  }
+
+  /* ---------- 協作路線：沿著小人實際走的外環道路與木棧道 ---------- */
   const linksGroup = new THREE.Group();
   scene.add(linksGroup);
   let linksOn = false;
@@ -1350,11 +1514,12 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
         const key = [th.id, to].sort().join("|");
         if (seen.has(key)) return;
         seen.add(key);
-        const a = islands.get(th.id).group.position, b = islands.get(to).group.position;
-        // 兩島中心間的直線，與木棧道同一條；高度每幀依地面決定
-        const n = Math.max(8, Math.round(Math.hypot(b.x - a.x, b.z - a.z) / 0.6));
+        const R = walkRoute(th.id, to);
+        if (!R) return;
+        // 沿步行路線取點；高度每幀依地面決定
+        const n = Math.max(8, Math.round(R.len / 0.6));
         const pts = [];
-        for (let i = 0; i <= n; i++) pts.push([lerp(a.x, b.x, i / n), lerp(a.z, b.z, i / n)]);
+        for (let i = 0; i <= n; i++) { const p = routeAt(R, (R.len * i) / n); pts.push([p.x, p.z]); }
         const lm = track(new THREE.MeshBasicMaterial({ color: th.color || "#555", transparent: true, opacity: 0.9 }));
         const line = new THREE.InstancedMesh(dotGeo, lm, pts.length);
         line.userData = { a: th.id, b: to, isLink: true };
@@ -1371,7 +1536,7 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
   // 路線所在的地面高度：島上貼著島面，海上貼著木棧道
   const groundY = (x, z) => {
     const isl = islandAt(x, z);
-    return isl ? TOP + isl.group.position.y + 0.025 : DECK_Y + 0.06;
+    return isl ? TOP + isl.group.position.y + 0.035 : BRIDGE_Y + 0.035;
   };
   const linkM4 = new THREE.Matrix4();
   function updateLinks(t) {
@@ -1404,7 +1569,6 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
   scene.add(carriersGroup);
   const carriers = []; // { task, w, tag, len, mid }
   let carriersOn = true, namesOn = false, activeTaskId = null;
-  const DECK_Y = 0.06;
   const hitMat = track(new THREE.MeshBasicMaterial({ visible: false }));
   const islandAt = (x, z) => {
     for (const isl of islands.values()) {
@@ -1413,95 +1577,73 @@ export function createScene(container, themes = [], { onSelectTheme, onSelectTas
     }
     return null;
   };
-  {
-    const built = new Set();
-    tasks.forEach((task, ti) => {
-      const A = islands.get(task.from), B = islands.get(task.to);
-      if (!A || !B || A === B) return;
-      const pa = A.group.position, pb = B.group.position;
-      const dir = new THREE.Vector3(pb.x - pa.x, 0, pb.z - pa.z);
-      const len = dir.length();
-      dir.normalize();
+  tasks.forEach((task, ti) => {
+    const A = islands.get(task.from), B = islands.get(task.to);
+    if (!A || !B || A === B) return;
+    const route = walkRoute(task.from, task.to);
+    if (!route) return;
+    const walkT = route.len / 1.3, restT = 1.4, cycle = 2 * (walkT + restT);
+    const cargoA = mat(A.theme.color || "#888"), cargoB = mat(B.theme.color || "#888");
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    route.pts.forEach(([x, z]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); });
+    const mid = new THREE.Vector3((x0 + x1) / 2, 0.6, (z0 + z1) / 2), span = Math.hypot(x1 - x0, z1 - z0);
 
-      // 木棧道（島上的部分會被島面蓋住，只露出海上那段）
-      const key = [task.from, task.to].sort().join("|");
-      if (!built.has(key)) {
-        built.add(key);
-        const bridge = new THREE.Group();
-        bridge.position.set((pa.x + pb.x) / 2, 0, (pa.z + pb.z) / 2);
-        bridge.rotation.y = Math.atan2(-dir.z, dir.x);
-        box(bridge, len, 0.08, 0.8, "#c9a47c", 0, DECK_Y - 0.04, 0);
-        box(bridge, len, 0.04, 0.05, "#a9825c", 0, DECK_Y + 0.16, 0.38);
-        box(bridge, len, 0.04, 0.05, "#a9825c", 0, DECK_Y + 0.16, -0.38);
-        for (let s = -len / 2 + 0.6; s < len / 2; s += 1.4) {
-          box(bridge, 0.05, 0.18, 0.05, "#a9825c", s, DECK_Y, 0.38);
-          box(bridge, 0.05, 0.18, 0.05, "#a9825c", s, DECK_Y, -0.38);
-          box(bridge, 0.12, 0.7, 0.12, "#8a6a4c", s, -0.65, 0);
-        }
-        scene.add(bridge);
-      }
+    for (let k = 0; k < 2; k++) {
+      const w = new THREE.Group();
+      const role = ROLES[(task.crew || [])[k]] || ROLES.市民;
+      const ch = makeCharacter(role, 500 + ti * 2 + k);
+      ch.scale.multiplyScalar(1.15);
+      w.add(ch);
+      // 背上的搬運箱：去程裝 A 島的資源、回程換成 B 島的
+      const cargo = new THREE.Mesh(cg("crate", () => new RoundedBoxGeometry(0.2, 0.2, 0.13, 2, 0.03)), cargoA);
+      cargo.position.set(0, 0.36, -0.14);
+      cargo.castShadow = true;
+      ch.userData.body.add(cargo);
+      const strap = part(ch.userData.body, cg("strap", () => new THREE.BoxGeometry(0.212, 0.025, 0.142)), "#5b5340", 0, 0.4, 0);
+      strap.castShadow = false;
+      const hit = new THREE.Mesh(track(new THREE.CylinderGeometry(0.38, 0.38, 1.0, 8)), hitMat);
+      hit.position.y = 0.45;
+      w.add(hit);
+      w.traverse((o) => { o.userData.taskId = task.id; });
+      carriersGroup.add(w);
 
-      const start = new THREE.Vector3(pa.x + dir.x * A.r * 0.45, 0, pa.z + dir.z * A.r * 0.45);
-      const end = new THREE.Vector3(pb.x - dir.x * B.r * 0.45, 0, pb.z - dir.z * B.r * 0.45);
-      const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(0.17); // 去程靠右、回程靠左
-      const walkT = start.distanceTo(end) / 1.1, restT = 1.4, cycle = 2 * (walkT + restT);
-      const cargoA = mat(A.theme.color || "#888"), cargoB = mat(B.theme.color || "#888");
+      // 名牌：顯示這位人物的身份
+      const el = document.createElement("div");
+      el.className = "zb-carrier-tag";
+      el.textContent = (task.crew || [])[k] || "市民";
+      el.title = task.title || task.id;
+      el.addEventListener("click", (e) => { e.stopPropagation(); selectTask(task.id); });
+      const tag = new CSS2DObject(el);
+      tag.position.set(0, 1.05, 0);
+      tag.visible = false;
+      w.add(tag);
+      carriers.push({ task, w, tag, len: span, mid });
 
-      for (let k = 0; k < 2; k++) {
-        const w = new THREE.Group();
-        const role = ROLES[(task.crew || [])[k]] || ROLES.市民;
-        const ch = makeCharacter(role, 500 + ti * 2 + k);
-        ch.scale.multiplyScalar(1.15);
-        w.add(ch);
-        // 背上的搬運箱：去程裝 A 島的資源、回程換成 B 島的
-        const cargo = new THREE.Mesh(cg("crate", () => new RoundedBoxGeometry(0.2, 0.2, 0.13, 2, 0.03)), mat(A.theme.color || "#888"));
-        cargo.position.set(0, 0.36, -0.14);
-        cargo.castShadow = true;
-        ch.userData.body.add(cargo);
-        const strap = part(ch.userData.body, cg("strap", () => new THREE.BoxGeometry(0.212, 0.025, 0.142)), "#5b5340", 0, 0.4, 0);
-        strap.castShadow = false;
-        const hit = new THREE.Mesh(track(new THREE.CylinderGeometry(0.38, 0.38, 1.0, 8)), hitMat);
-        hit.position.y = 0.45;
-        w.add(hit);
-        w.traverse((o) => { o.userData.taskId = task.id; });
-        carriersGroup.add(w);
-
-        // 名牌：顯示這位人物的身份
-        const el = document.createElement("div");
-        el.className = "zb-carrier-tag";
-        el.textContent = (task.crew || [])[k] || "市民";
-        el.title = task.title || task.id;
-        el.addEventListener("click", (e) => { e.stopPropagation(); selectTask(task.id); });
-        const tag = new CSS2DObject(el);
-        tag.position.set(0, 1.05, 0);
-        tag.visible = false;
-        w.add(tag);
-        carriers.push({ task, w, tag, len, mid: new THREE.Vector3((pa.x + pb.x) / 2, 0.6, (pa.z + pb.z) / 2) });
-
-        const phase = (k * cycle) / 2 + ti * 0.9;
-        anims.push((t) => {
-          const u = (t + phase) % cycle;
-          let p, forward, moving = true;
-          if (u < walkT) { p = u / walkT; forward = true; }
-          else if (u < walkT + restT) { p = 1; forward = true; moving = false; }
-          else if (u < 2 * walkT + restT) { p = 1 - (u - walkT - restT) / walkT; forward = false; }
-          else { p = 0; forward = false; moving = false; }
-          const sgn = forward ? 1 : -1;
-          const x = lerp(start.x, end.x, p) + side.x * sgn;
-          const z = lerp(start.z, end.z, p) + side.z * sgn;
-          const isl = islandAt(x, z);
-          const gy = isl ? TOP + isl.group.position.y : DECK_Y + 0.04;
-          w.position.x = x;
-          w.position.z = z;
-          w.position.y += (gy - w.position.y) * 0.3;
-          ch.userData.step(t * 9 + phase, moving);
-          w.rotation.y = Math.atan2(dir.x * sgn, dir.z * sgn);
-          // 到站換貨：去程搬 A 的資源，回程帶 B 的資源
-          cargo.material = (forward && p < 1) || (!forward && p === 0) ? cargoA : cargoB;
-        });
-      }
-    });
-  }
+      const phase = (k * cycle) / 2 + ti * 0.9;
+      const at = {};
+      anims.push((t) => {
+        const u = (t + phase) % cycle;
+        let p, forward, moving = true;
+        if (u < walkT) { p = u / walkT; forward = true; }
+        else if (u < walkT + restT) { p = 1; forward = true; moving = false; }
+        else if (u < 2 * walkT + restT) { p = 1 - (u - walkT - restT) / walkT; forward = false; }
+        else { p = 0; forward = false; moving = false; }
+        const sgn = forward ? 1 : -1;
+        routeAt(route, p * route.len, at);
+        // 去程、回程各走道路的一側
+        const x = at.x - at.dz * 0.12 * sgn, z = at.z + at.dx * 0.12 * sgn;
+        const isl = islandAt(x, z);
+        const gy = isl ? TOP + isl.group.position.y : BRIDGE_Y;
+        w.position.x = x;
+        w.position.z = z;
+        w.position.y += (gy - w.position.y) * 0.3;
+        ch.userData.step(t * 9 + phase, moving);
+        if (moving) w.rotation.y = Math.atan2(at.dx * sgn, at.dz * sgn);
+        // 到站換貨：去程搬 A 的資源，回程帶 B 的資源
+        cargo.material = (forward && p < 1) || (!forward && p === 0) ? cargoA : cargoB;
+      });
+    }
+  });
   function refreshCarrierTags() {
     refreshLinks();
     carriers.forEach((c) => {
